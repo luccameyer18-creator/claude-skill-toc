@@ -113,7 +113,7 @@ Erro bobo (texto de modelo esquecido, palavra repetida, vírgula colada, formato
 
 ## Gastando menos token
 
-- Os revisores do toc são agentes enxutos (`toc-revisor`, `toc-reconferente`) que só leem e gravam arquivo. Subagente comum herda todas as ferramentas e MCPs instalados, e era daí que vinha a maior parte dos ~65–70 mil tokens de cada chamada.
+- Os revisores do toc são agentes enxutos (`toc-revisor`, `toc-reconferente`) que só leem e gravam arquivo. Subagente comum herda todas as ferramentas e MCPs instalados, e era daí que vinha a maior parte dos ~65–70 mil tokens de cada chamada. Medido na mesma reconferência: 73 mil tokens antes, 16 mil com o agente enxuto.
 - A reconferência manda ao Haiku só recortes "antes | agora" das pendências, não a entrega inteira para um modelo maior.
 - Combina com [caveman](https://github.com/JuliusBrussee/caveman) (respostas mais curtas), [rtk](https://github.com/rtk-ai/rtk) (saída de comando menor) e [context-mode](https://github.com/mksglu/context-mode) (tira a saída bruta das ferramentas do contexto).
 

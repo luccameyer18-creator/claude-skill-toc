@@ -113,7 +113,7 @@ Silly mistakes (leftover placeholders, doubled words, glued commas, mixed number
 
 ## Spending fewer tokens
 
-- toc's reviewers are lean agents (`toc-revisor`, `toc-reconferente`) that only read and write files. A general-purpose subagent inherits every tool and MCP server you have installed, which is most of the ~65–70k tokens each call used to cost.
+- toc's reviewers are lean agents (`toc-revisor`, `toc-reconferente`) that only read and write files. A general-purpose subagent inherits every tool and MCP server you have installed, which is most of the ~65–70k tokens each call used to cost. Measured on the same re-check: 73k tokens before, 16k with the lean agent.
 - Re-checks send only "before | after" crops of the open issues to Haiku, not the whole deliverable to a bigger model.
 - Pairs well with [caveman](https://github.com/JuliusBrussee/caveman) (shorter answers), [rtk](https://github.com/rtk-ai/rtk) (smaller command output) and [context-mode](https://github.com/mksglu/context-mode) (keeps raw tool output out of the context).
 
