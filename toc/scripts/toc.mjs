@@ -50,7 +50,8 @@ function rodarConferencia(raiz, est, fp) {
   const n = (est.conferencias || 0) + 1;
   const saida = path.join(raiz, PASTA, `rodada-${String(n).padStart(2, '0')}`);
   fs.rmSync(saida, {recursive: true, force: true});
-  const r = spawnSync(process.execPath, [path.join(AQUI, 'conferir.mjs'), '--contrato', path.resolve(raiz, est.contrato), '--saida', saida, '--raiz', raiz, '--fp', fp],
+  const anterior = est.cache?.pasta && fs.existsSync(path.join(raiz, est.cache.pasta)) ? path.join(raiz, est.cache.pasta) : '';
+  const r = spawnSync(process.execPath, [path.join(AQUI, 'conferir.mjs'), '--contrato', path.resolve(raiz, est.contrato), '--saida', saida, '--raiz', raiz, '--fp', fp, '--anterior', anterior],
     {cwd: raiz, encoding: 'utf8', timeout: 480000});
   est.conferencias = n;
   const relatorio = lerJSON(path.join(saida, 'relatorio.json'), null);

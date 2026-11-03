@@ -11,6 +11,12 @@ Ele transforma o seu pedido num **contrato verificável**, confere a entrega com
 **Página web** (Playwright, 3 telas, movimento normal e reduzido, rolando do topo ao fim):
 contraste medido na foto (inclusive sobre vídeo e WebGL), texto cortado ou saindo da tela, texto por cima de texto, botão fixo cobrindo outro, quase alinhado (2 a 4px), palavra sozinha ou pendurada no título, área de toque, foco invisível, imagem esticada ou quebrada, fonte que não carregou, erro de console e rede, salto de layout.
 
+Sinais de interface gerada e acabamento (ideias do [Impeccable](https://github.com/pbakaus/impeccable) e do [Taste Skill](https://github.com/Leonxlnx/taste-skill)): cinza sobre fundo colorido, hierarquia de tipo achatada, tamanhos de letra demais, tudo centralizado, etiqueta miúda ou 01/02 acima do título, easing elástico, faixa colorida na lateral, texto com gradiente, seleção de texto sem a cor da marca.
+
+**Visão, leve (só Pillow):**
+- **Diff entre rodadas.** Cada rodada é comparada com a anterior e o que mudou ganha um retângulo vermelho. Pega o "corrigiu A e quebrou B". O diff tolera serrilhado, como o pixelmatch e o odiff, e ignora canvas, vídeo e animação em loop.
+- **Olhar apertado.** A primeira tela é borrada para achar onde o olho cai primeiro. Avisa quando não cai no título nem na ação principal.
+
 **Documentos:**
 
 | Tipo | Exemplos de erro pego |
@@ -95,7 +101,7 @@ python exemplos/ver.py saida/xlsx
 
 ## Créditos
 
-Ideias reaproveitadas (nenhum arquivo copiado) do Ralph Loop (Anthropic), visual-verdict (oh-my-claudecode), design-review (OneRedOak e jezweb), design-review-loop (landing-craft) e da skill no-ai-slop. Detalhes em [`toc/CREDITOS.md`](toc/CREDITOS.md).
+Ideias reaproveitadas (nenhum arquivo copiado) do Ralph Loop (Anthropic), visual-verdict (oh-my-claudecode), design-review (OneRedOak e jezweb), design-review-loop (landing-craft), Taste Skill, Impeccable, pixelmatch, odiff e da skill no-ai-slop. Detalhes em [`toc/CREDITOS.md`](toc/CREDITOS.md).
 
 ## Licença
 

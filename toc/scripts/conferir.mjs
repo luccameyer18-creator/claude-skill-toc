@@ -231,7 +231,7 @@ async function sonda(o) {
     const nucleo = fundo.slice(0, Math.max(10, Math.floor(fundo.length * 0.6))).map(([p]) => p).sort((a, b) => lum(a) - lum(b));
     const med = nucleo[nucleo.length >> 1];
     const pior = lum(tc) > lum(med) ? nucleo[Math.floor(nucleo.length * 0.9)] : nucleo[Math.floor(nucleo.length * 0.1)];
-    return {tip: razao(ef(med), med), pior: razao(ef(pior), pior)};
+    return {tip: razao(ef(med), med), pior: razao(ef(pior), pior), fundo: med, letra: tc};
   };
   // Contraste pelo CSS dos ancestrais, só quando não há foto nem mídia por trás.
   const contrasteCSS = el => {
@@ -256,6 +256,11 @@ async function sonda(o) {
     const u = uniao(retTexto(el));
     const m = px ? contrastePixel(el, px) : (sobreMidia(el, u, ms) ? null : contrasteCSS(el));
     if (!m) return null;
+    if (m.fundo && m.letra) { // cinza sobre fundo colorido (Impeccable): texto secundário deve puxar o tom do fundo
+      const sat = c => Math.max(...c.slice(0, 3)) - Math.min(...c.slice(0, 3));
+      if (sat(m.letra) < 16 && sat(m.fundo) > 70 && m.letra[0] > 60 && m.letra[0] < 200)
+        achar('cinza-sobre-cor', 'nota', el, `texto cinza sobre fundo colorido (rgb ${m.fundo.join(',')}): tinja o texto com o tom do fundo em vez de cinza`);
+    }
     const precisa = minimo || (grande(s) ? 3 : 4.5);
     const fmt = v => v.toFixed(2).replace('.', ',');
     if (m.tip < precisa) achar(regra, 'corrigir', el, `contraste ${fmt(m.tip)}:1, precisa ${fmt(precisa)}:1 (${px ? 'medido na foto' : 'pelo CSS'})`, m.tip);
@@ -468,6 +473,70 @@ async function sonda(o) {
       if (d >= 2 && d < 9) pares.push(`rgb(${ns[i].slice(0, 3)}) e rgb(${ns[j].slice(0, 3)})`);
     }
     if (pares.length) achar('cinzas', 'nota', null, `cinzas quase iguais (parecem o mesmo, não são): ${pares.slice(0, 4).join('; ')}`);
+    // Sinais de interface gerada e acabamento: ideias do Impeccable (detectores) e do Taste Skill (registro de sinais). Ver CREDITOS.
+    const hs = [...document.querySelectorAll('h1,h2,h3')].filter(h => visivel(h) && !ocultoAT(h));
+    const porPapel = {};
+    for (const el of ts) {
+      const tag = el.closest('h1,h2,h3,p')?.tagName.toLowerCase();
+      if (tag) (porPapel[tag] ||= []).push([parseFloat(cs(el).fontSize), parseInt(cs(el).fontWeight) || 400]);
+    }
+    const mediana = (a, i) => a.map(x => x[i]).sort((x, y) => x - y)[a.length >> 1];
+    const papeis = ['h1', 'h2', 'h3', 'p'].filter(t => porPapel[t]?.length);
+    for (let i = 0; i + 1 < papeis.length; i++) {
+      const a = porPapel[papeis[i]], b = porPapel[papeis[i + 1]];
+      const razaoT = mediana(a, 0) / mediana(b, 0);
+      if (razaoT >= 0.95 && razaoT < 1.2 && Math.abs(mediana(a, 1) - mediana(b, 1)) < 200)
+        achar('hierarquia-achatada', 'nota', null, `${papeis[i]} (${mediana(a, 0)}px) e ${papeis[i + 1]} (${mediana(b, 0)}px) quase do mesmo tamanho e peso: dê um passo de 1,25x ou mais, ou 200 de peso`);
+    }
+    const tamanhos = new Set(ts.map(el => Math.round(parseFloat(cs(el).fontSize))));
+    if (tamanhos.size > 9) achar('tamanhos-demais', 'nota', null, `${tamanhos.size} tamanhos de letra (${[...tamanhos].sort((a, b) => a - b).join(', ')}px): uns 5, bem separados, leem melhor`);
+    const blocosTxt = ts.filter(el => /^(P|H1|H2|H3|LI)$/.test(el.tagName));
+    const centr = blocosTxt.filter(el => cs(el).textAlign === 'center').length;
+    if (blocosTxt.length >= 8 && centr / blocosTxt.length > 0.72) achar('tudo-centralizado', 'nota', null, `${Math.round(centr / blocosTxt.length * 100)}% dos textos centralizados: ancore à esquerda e guarde o centro para um momento`);
+    if (vw >= 1000) for (const h of document.querySelectorAll('h1')) {
+      if (!visivel(h)) continue;
+      const lh = parseFloat(cs(h).lineHeight) || parseFloat(cs(h).fontSize) * 1.2, n = Math.round(h.getBoundingClientRect().height / lh);
+      if (n >= 4) achar('titulo-longo', 'nota', h, `título principal em ${n} linhas no desktop: umas 5 palavras no título, o resto no texto de apoio`);
+    }
+    for (const h of hs) {
+      const p = h.previousElementSibling;
+      if (p && visivel(p)) {
+        const s = cs(p), t = (p.innerText || '').trim();
+        if (t && t.split(/\s+/).length <= 5 && parseFloat(s.fontSize) <= 14 && (s.textTransform === 'uppercase' || parseFloat(s.letterSpacing) > 0.5))
+          achar('rotulo-acima-do-titulo', 'nota', p, /^\(?\d{1,3}\)?$/.test(t)
+            ? `numeração "${t}" acima do título (01, 02, 03): só use se a ordem informa algo ao leitor`
+            : `"${t.slice(0, 30)}" em letra miúda espaçada acima do título: diga isso no título ou no texto de apoio`);
+      }
+      const n = h.nextElementSibling;
+      if (h.tagName !== 'H1' && p && n && visivel(p) && visivel(n)) {
+        const r = h.getBoundingClientRect(), acima = r.top - p.getBoundingClientRect().bottom, abaixo = n.getBoundingClientRect().top - r.bottom;
+        if (acima >= 0 && abaixo - acima > 8) achar('espaco-do-titulo', 'nota', h, `${Math.round(acima)}px acima e ${Math.round(abaixo)}px abaixo: o título fica mais perto do texto dele do que do bloco anterior`);
+      }
+    }
+    for (const p of document.querySelectorAll('p')) {
+      if (!visivel(p) || ocultoAT(p) || (p.innerText || '').length < 200) continue;
+      const ch = p.getBoundingClientRect().width / (parseFloat(cs(p).fontSize) * 0.5);
+      if (ch > 95) { achar('linha-longa', 'nota', p, `linhas de ~${Math.round(ch)} caracteres: o confortável é 65 a 75 (max-width perto de 70ch)`); break; }
+    }
+    for (const el of vis) {
+      const s = cs(el);
+      if (/text/.test(s.backgroundClip + ' ' + (s.webkitBackgroundClip || '')) && /gradient/.test(s.backgroundImage)) achar('texto-gradiente', 'nota', el, 'texto com gradiente: ênfase vem de peso ou tamanho');
+      const bl = parseFloat(s.borderLeftWidth);
+      if (bl > 1 && bl < 12 && s.borderLeftStyle !== 'none' && parseFloat(s.borderTopWidth) === 0 && el.offsetHeight > 30) {
+        const c = cor(s.borderLeftColor);
+        if (c[3] > 0.5 && Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]) > 40) achar('faixa-lateral', 'nota', el, `faixa colorida de ${bl}px só na lateral: sinal comum de interface gerada`);
+      }
+      for (const f of `${s.transitionTimingFunction},${s.animationTimingFunction}`.split(/,(?![^(]*\))/)) {
+        const m = f.match(/cubic-bezier\(([^)]+)\)/);
+        if (m) { const v = m[1].split(',').map(Number); if (v[1] > 1.05 || v[3] > 1.05 || v[1] < -0.05 || v[3] < -0.05) { achar('animacao-elastica', 'nota', el, `easing que passa do ponto (${f.trim()}): ease-out exponencial assenta melhor`); break; } }
+      }
+    }
+    const td = [...document.querySelectorAll('td')].find(t => visivel(t) && /^\s*[\d.,%R$ -]+\s*$/.test(t.innerText || '') && !/tabular-nums/.test(cs(t).fontVariantNumeric));
+    if (td) achar('numeros-tabulares', 'nota', td, 'números em tabela sem font-variant-numeric: tabular-nums (os dígitos não alinham na coluna)');
+    try {
+      const sel = getComputedStyle(document.body, '::selection').backgroundColor;
+      if (!sel || sel === 'rgba(0, 0, 0, 0)') achar('superficies-do-navegador', 'nota', null, 'seleção de texto na cor padrão do navegador: defina ::selection (e o anel de foco) com a cor da marca');
+    } catch {}
     const xs = new Set();
     for (const el of vis) { const m = cs(el).boxShadow.match(/(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px/); if (m && +m[1] !== 0) xs.add(Math.sign(+m[1])); }
     if (xs.size > 1) achar('sombra', 'nota', null, 'sombras apontam para lados diferentes (luz vindo de dois lados)');
@@ -672,10 +741,35 @@ async function conferirDocumento({c, contratoArq, raiz, saida, fp}) {
   return fechar({c, contratoArq, raiz, saida, fp, url: arq, achados, itensRes, fotos: {}, folhas: doc.folhas || [], combinacoes: [doc.tipo], tipo: doc.tipo, avisos: doc.avisos});
 }
 
-export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = ''}) {
+// Diff com a rodada anterior e olhar apertado (visao.py). Tudo vira nota: quem julga se a mudança era a pretendida é o revisor.
+function visao(saida, anterior) {
+  const r = spawnSync(process.env.TOC_PYTHON || 'python', ['-I', path.join(AQUI, 'visao.py'), saida, anterior || ''], {encoding: 'utf8', timeout: 180000});
+  const v = lerJSONseguro(path.join(saida, 'visao.json'));
+  if (!v) return {achados: [], folhas: [], avisos: [`visão não rodou: ${String(r.error?.message || r.stderr || '').slice(-200)}`]};
+  const achados = [];
+  for (const d of v.diffs || []) achados.push({regra: 'mudanca-visual', gravidade: 'nota', onde: d.imagem, porDetalhe: true, tela: 'visão',
+    detalhe: d.nota || `${d.regioes.length} região(ões) mudaram desde a rodada anterior (${Math.round(d.mudou * 100)}% da imagem); confira em folha-mudancas se mudou só o que devia`});
+  const s = v.squint;
+  if (s && s.alvos.length && !s.dentro.length) achados.push({regra: 'olhar-apertado', gravidade: 'nota', onde: s.foto, porDetalhe: true, tela: 'visão',
+    detalhe: `apertando os olhos, a primeira tela puxa o olhar para o ponto (${s.pico.join(', ')}), longe do ${s.alvos.join(' e da ')}; confira se é de propósito`});
+  return {achados, folhas: v.folhas || [], avisos: []};
+}
+
+export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '', anterior = ''}) {
   const c = lerContrato(contratoArq);
-  if (!ehPagina(c)) return conferirDocumento({c, contratoArq, raiz, saida, fp});
-  let blocosWeb = [];
+  if (!ehPagina(c)) {
+    const rel = await conferirDocumento({c, contratoArq, raiz, saida, fp});
+    if (!anterior) return rel;
+    const vis = visao(saida, anterior);
+    if (!vis.achados.length && !vis.folhas.length) return rel;
+    rel.achados.push(...vis.achados.map(a => ({...a, telas: ['visão'], passos: [], dispensado: false})));
+    rel.folhas.push(...vis.folhas); rel.contagem.nota += vis.achados.length;
+    fs.writeFileSync(path.join(saida, 'relatorio.json'), JSON.stringify(rel, null, 2));
+    fs.writeFileSync(path.join(saida, 'resumo.md'), resumo(rel));
+    return rel;
+  }
+  let blocosWeb = [], squint = null;
+  const mascaras = {};
   const pw = carregarPlaywright(raiz, ...(c.arquivo ? [path.dirname(path.resolve(raiz, c.arquivo))] : []));
   const fotosDir = path.join(saida, 'fotos');
   fs.mkdirSync(fotosDir, {recursive: true});
@@ -735,6 +829,23 @@ export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '
           const nome = `${tela.nome}-${String(n).padStart(2, '0')}.jpg`;
           await page.screenshot({path: path.join(fotosDir, nome), type: 'jpeg', quality: 72});
           (fotos[tela.nome] ||= []).push(`fotos/${nome}`);
+          // o que mexe sozinho (canvas, vídeo) fica de fora do diff entre rodadas
+          mascaras[nome] = await page.evaluate(() => [...document.querySelectorAll('canvas,video,iframe'),
+            ...document.getAnimations().filter(a => a.playState === 'running' && a.effect?.target instanceof Element && a.effect.getComputedTiming().iterations === Infinity).map(a => a.effect.target)]
+            .map(e => e.getBoundingClientRect())
+            .filter(r => r.width > 4 && r.height > 4 && r.bottom > 0 && r.top < innerHeight).map(r => [Math.max(0, r.left), Math.max(0, r.top), r.width, r.height].map(Math.round)));
+          if (n === 0 && !squint) squint = {foto: `fotos/${nome}`, alvos: await page.evaluate(() => {
+            const r = (el, nome) => { const q = el.getBoundingClientRect(); return {nome, x: q.left, y: q.top, w: q.width, h: q.height}; };
+            const out = [], h1 = document.querySelector('h1');
+            if (h1 && h1.getBoundingClientRect().top < innerHeight) out.push(r(h1, 'título'));
+            // ação principal: o maior botão com fundo inteiro na primeira tela
+            const cta = [...document.querySelectorAll('a,button')].filter(e => { const q = e.getBoundingClientRect(), s = getComputedStyle(e);
+              return q.top >= 0 && q.bottom <= innerHeight && q.width > 60 && s.visibility !== 'hidden' &&
+                (!/rgba\(0, 0, 0, 0\)|transparent/.test(s.backgroundColor) || s.backgroundImage !== 'none'); })
+              .sort((a, b) => { const p = e => { const q = e.getBoundingClientRect(); return q.width * q.height; }; return p(b) - p(a); })[0];
+            if (cta) out.push(r(cta, 'ação principal'));
+            return out;
+          })};
         }
         marca(`  passo ${n}: foto`);
         add((await page.evaluate(sonda, {modo: 'passo', png, dispensas})).achados.map(a => ({...a, passo: n})));
@@ -762,7 +873,11 @@ export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '
   } finally { await browser.close(); }
 
   achados.push(...conferirTexto(blocosWeb, c, saida, 'texto'));
-  const avisos = [];
+  fs.writeFileSync(path.join(saida, 'mascaras.json'), JSON.stringify(mascaras));
+  if (squint) fs.writeFileSync(path.join(saida, 'squint.json'), JSON.stringify(squint));
+  const vis = visao(saida, anterior);
+  achados.push(...vis.achados); folhasFeitas.push(...vis.folhas);
+  const avisos = [...vis.avisos];
   if ((c.estilo || {}).ortografia !== false && blocosWeb.length) { // corretor do Word sobre o texto da página, quando houver Word
     const arq = path.join(saida, '_blocos.json');
     fs.writeFileSync(arq, JSON.stringify({blocos: blocosWeb, idioma: (c.estilo || {}).idioma || 'pt-BR', palavrasOk: (c.estilo || {}).palavrasOk || []}));
@@ -800,7 +915,7 @@ if (euMesmo) {
   const raiz = path.resolve(arg('raiz', process.cwd()));
   const contratoArq = path.resolve(raiz, arg('contrato', '.claude/toc/contrato.json'));
   const saida = path.resolve(raiz, arg('saida', '.claude/toc/manual'));
-  conferir({contratoArq, raiz, saida, fp: arg('fp', '')})
+  conferir({contratoArq, raiz, saida, fp: arg('fp', ''), anterior: arg('anterior', '')})
     .then(rel => { process.stdout.write(resumo(rel)); process.exit(rel.passou ? 0 : 1); })
     .catch(e => { console.error('toc: não consegui conferir: ' + (e.stack || e.message)); process.exit(2); });
 }

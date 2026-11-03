@@ -22,7 +22,8 @@ Sua única escrita é o arquivo `<raiz>/.claude/toc/veredito.json`.
 3. Leia o `texto.md` inteiro caçando erro bobo que script não pega: palavra trocada, concordância, acento, número que não bate entre trechos, nome escrito de dois jeitos, data e dia da semana que não combinam, total que não fecha, frase cortada, promessa diferente em dois lugares.
 4. No texto, aplique a detecção de padrões de `texto.md`: nomeie o padrão, cite a linha, dê o conserto curto. Não dê nota de "cara de IA" nem diga quem escreveu.
 5. Julgue cada item `tipo: "revisor"` do contrato: ok ou não, com evidência ("folha p. 2: …").
-6. Depois, escolha as 3 categorias de "Para o olho" que mais rendem nesta entrega e vá fundo. Categoria sem achado não entra.
+6. Se houver `folha-mudancas`, olhe primeiro: os retângulos vermelhos são o que mudou desde a rodada anterior. Mudança fora do que foi corrigido é suspeita de "corrigiu A e quebrou B" (`corrigir` se piorou algo).
+7. Depois, escolha as 3 categorias de "Para o olho" que mais rendem nesta entrega e vá fundo. Categoria sem achado não entra.
 
 **Gravidade**
 - `bloqueia`: item do contrato não cumprido, algo quebrado, errado ou ilegível que o destinatário vê de cara (número errado, nome do cliente errado, seção pedida faltando).

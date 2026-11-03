@@ -49,7 +49,9 @@ const ATRIBUICAO = [P(String.raw`especialistas (?:concordam|afirmam|apontam|dize
 const CITACAO = /\(|\[\d|https?:|\b(?:19|20)\d\d\b|segundo [A-ZÁÉÍÓÚ]|conforme [A-ZÁÉÍÓÚ]|according to [A-Z]|fonte:|source:/;
 const RECAPITULACAO = P(String.raw`em (?:conclusão|suma|resumo|síntese)|por fim|no geral|de modo geral|de forma geral|em última análise|resumindo|concluindo|ultimately|overall|in conclusion|in summary|to sum up|all in all`, 'iu');
 const ADVERBIOS = P(String.raw`simplesmente|literalmente|honestamente|realmente|verdadeiramente|fundamentalmente|crucialmente|inerentemente|inevitavelmente|basicamente|essencialmente|efetivamente|genuinamente|just|literally|honestly|simply|actually|truly|fundamentally|importantly|crucially|inherently|inevitably`, 'giu');
-const SUSPEITAS = P(String.raw`ecossistemas?|jornada|impulsionar|panorama|abrangente|soluções? inovadoras?|inovador[ae]s?|diferencial competitivo|valor agregado|sem precedentes|landscape|journey|seamless(?:ly)?|cutting edge`, 'giu');
+const SUSPEITAS = P(String.raw`ecossistemas?|jornada|impulsionar|panorama|abrangente|soluções? inovadoras?|inovador[ae]s?|diferencial competitivo|valor agregado|sem precedentes|sem esforço|tudo em um|sem complicação|revolucion\p{L}+|landscape|journey|seamless(?:ly)?|cutting edge|effortless(?:ly)?|all-in-one|unlock(?:s|ed|ing)?`, 'giu');
+// rótulos genéricos de botão (Taste Skill, "copy tells"): o botão diz a ação dele
+const ROTULO_GENERICO = /^(saiba mais|comece agora|começar agora|clique aqui|leia mais|ver mais|get started|learn more|click here|read more)[.!]?$/i;
 
 // Resto de modelo esquecido na entrega.
 const PROVISORIO_I = R(String.raw`lorem ipsum|dolor sit amet|\[(?:inserir|insira|nome|empresa|cliente|data|descri[cç][aã]o|título|titulo|texto|xxx|preencher|completar|\.{3}|…)[^\]]{0,40}\]|<(?:nome|empresa|cliente|data|título|texto|inserir)[^>]{0,30}>|(?<![\p{L}])x{3,}(?![\p{L}])|\{\{[^}]{0,40}\}\}|\{%[^%]{0,40}%\}|erro! |error! |#REF!|#NAME\?|#N/A|#DIV/0!|#VALUE!|#NUM!|#NULL!|\[object Object\]|click to (?:add|edit)|clique para (?:adicionar|editar)|your (?:text|title|name) here|(?:seu|sua) (?:texto|título|nome) aqui|texto (?:de exemplo|aqui)|título aqui|insert (?:text|title|name)|sample text|nome d[oa] (?:cliente|empresa)|123\.456\.789-00|000\.000\.000-00|\(00\) ?0000-0000|email@exemplo|exemplo@exemplo|seu@email|dd/mm/(?:aaaa|yyyy)|00/00/0000`);
@@ -90,6 +92,8 @@ export function lintar(blocos, opc = {}) {
     for (let m, re = /[\p{Ll}]{2,}\.[\p{Lu}][\p{Ll}]/gu; (m = re.exec(limpo));) add('texto-pontuacao', 'nota', b, `falta espaço depois do ponto: "${trecho(t, m.index, 5)}"`);
     if (opc.espacosDuplos !== false && b.origem !== 'web') for (let m, re = /\S {2,}\S/g; (m = re.exec(t));) add('texto-espacos', 'nota', b, `espaço duplo: "${trecho(t, m.index, 4)}"`);
     if (b.papel === 'titulo' && /\p{Extended_Pictographic}/u.test(t)) add('texto-emoji-em-titulo', 'corrigir', b, `emoji em título: "${t.slice(0, 60)}"`);
+    if (b.papel === 'rotulo' && ROTULO_GENERICO.test(t.trim())) add('texto-rotulo-generico', 'nota', b, `botão ou link "${t.trim()}": diga a ação ("Agendar diagnóstico", "Baixar a planilha")`);
+    if ((b.papel === 'lista' || b.papel === 'rotulo') && /^\p{Extended_Pictographic}/u.test(t.trim())) add('texto-emoji-como-icone', 'nota', b, `emoji fazendo papel de ícone: "${t.slice(0, 40)}"`);
   }
 
   if (slop) {
