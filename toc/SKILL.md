@@ -40,7 +40,7 @@ E tem botão de desligar: limite de rodadas e relatório honesto do que ficou ab
 3. **Faça ou corrija.** Para ver o estado sem esperar o hook: `toc conferir`. Abra as folhas de fotos (`rodada-NN/folha-*.jpg`) e o `texto.md`: olhar é obrigatório.
 4. **Tente terminar.** O hook confere (ou reaproveita, se nada mudou) e responde:
    - pendências mecânicas: corrija `bloqueia` antes de `corrigir`; texto se conserta com `referencias/texto.md`;
-   - "falta o olho de fora": chame o revisor (Agent, `model: "sonnet"`) com `referencias/revisor.md` preenchido e, em seguida, rode `toc esperar`: ele marca o revisor como em andamento e espera o veredito (tentar terminar enquanto o revisor trabalha não gasta rodada). Da 2ª revisão em diante é **rodada de confirmação**: passe a lista do que mudou e o veredito anterior, não peça a revisão inteira de novo. Não escreva o veredito você mesmo. Se o projeto exigir outro modelo para delegar, pause e pergunte;
+   - "falta o olho de fora": chame o revisor (Agent, `model: "sonnet"`) com `referencias/revisor.md` preenchido e, em seguida, rode `toc esperar`: ele marca o revisor como em andamento e espera o veredito (tentar terminar enquanto o revisor trabalha não gasta rodada). Peça ao revisor a `area` de cada pendência. Da 2ª vez em diante o hook monta a **reconferência barata**: um pacote com recortes "antes | agora" só das pendências e das mudanças fora delas; o prompt é "Você é o reconferente do toc. Leia e siga <pacote>", em Haiku. Ela fecha item a item, sem nota. Revisão completa de novo só quando o hook pedir. Não escreva o veredito você mesmo. Se o projeto exigir outro modelo para delegar, pause e pergunte;
    - pendências do revisor: corrija; conferência e revisor rodam de novo sobre o resultado novo;
    - nada: o laço fecha.
 5. **Relatório final** (sua última mensagem quando achar que fechou; se o hook devolver, continue e reescreva no fim).
@@ -53,6 +53,8 @@ E tem botão de desligar: limite de rodadas e relatório honesto do que ficou ab
 - **Arquivo:** em docx, pptx e xlsx edite no trecho (run, caixa, célula); regravar do zero apaga a formatação.
 - **Correção com valor** ("margin-top 22px → 24px"), não adjetivo.
 - **Precisa do usuário?** `toc pausar`, pergunte, `toc retomar`. Usuário mandou parar: `toc parar`.
+- **Página atrás de login ou senha** (loja fechada, painel): a conferência percebe que caiu na tela de login, para e marca os itens como não conferidos. Rode `toc login URL` em segundo plano e peça ao usuário para entrar na janela e fechá-la; a sessão fica em `.claude/toc/sessao.json` e as próximas conferências entram logadas. Você nunca digita senha ou código.
+- **Fonte, tamanho, cor:** afirme pela ficha tipográfica do `texto.md` (valores calculados), não pela foto.
 - **Tempo.** Documento: 10 a 30 s por conferência (Word e Excel abrem em instância própria). Página: 1 a 3 min. Se a página depende de servidor, deixe-o rodando.
 - Aprovação é do usuário. O laço fechar quer dizer "o combinado foi conferido", não "ficou perfeito".
 

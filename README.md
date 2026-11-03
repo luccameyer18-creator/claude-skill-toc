@@ -71,7 +71,8 @@ Every one of these was caught in toc's own tests.
 
 1. **Contract.** Claude turns your request into `.claude/toc/contrato.json`: what you asked for, and what it must not touch. Nothing you didn't ask for becomes a requirement.
 2. **Inspection.** Scripts look at the real thing: a headless browser scrolls the page on desktop, tablet and phone (with reduced motion too); Word and Excel render and recalculate copies of your files; text gets checked for typos and AI tells.
-3. **Fresh eyes.** A reviewer subagent that never saw the work being done reads the photos and the text and writes a verdict.
+3. **Fresh eyes.** A reviewer subagent that never saw the work being done reads the photos and the text and writes a verdict. It gets a typography sheet with the fonts the browser or Word actually used, so it doesn't guess fonts from a screenshot.
+   After that, re-checks are cheap: the hook crops a "before | after" of each open issue, plus anything that changed outside those spots, and a small model (Haiku) just ticks them off. Nothing gets re-reviewed from scratch unless it has to be.
 4. **The itch.** A Stop hook won't let Claude finish while anything in the contract, the scripts or the verdict is still open. Each round is diffed against the last one, so a fix that breaks something else shows up in red.
 5. **The off switch.** 8 rounds by default, then an honest report of what's still open. Never "it's perfect".
 
@@ -111,6 +112,7 @@ Silly mistakes (leftover placeholders, doubled words, glued commas, mixed number
 
 - Scripts measure. Taste belongs to the reviewer, and the final call belongs to you. "The loop closed" means "what we agreed on was checked", not "it's perfect".
 - Slide overflow is an estimate; PowerPoint is never automated.
+- Pages behind a login or a store password: run `toc login URL` once. It opens Chrome, **you** sign in and close the window, and later checks reuse that session (`.claude/toc/sessao.json`, git-ignored). Claude never types your password. If a check lands on a login screen anyway, it stops and says so instead of grading the wrong page.
 - The Portuguese AI-tell list is our own adaptation and can flag false positives. Use `dispensas` in the contract; every waiver shows up in the final report.
 - A web round takes 1 to 3 minutes; a document round, 10 to 30 seconds.
 - The skill's internal instructions are written in Portuguese. Claude follows them fine in any language; translation PRs are welcome.
@@ -118,7 +120,7 @@ Silly mistakes (leftover placeholders, doubled words, glued commas, mixed number
 ## Commands
 
 ```bash
-node ~/.claude/skills/toc/scripts/toc.mjs iniciar | conferir | esperar | status | pausar | retomar | parar
+node ~/.claude/skills/toc/scripts/toc.mjs iniciar | conferir | esperar | login URL | status | pausar | retomar | parar
 python -I ~/.claude/skills/toc/scripts/doc.py extrair FILE OUT_DIR     # document checker only
 python -I ~/.claude/skills/toc/scripts/doc.py recalcular sheet.xlsx     # save formula values
 node ~/.claude/skills/toc/scripts/slop.mjs draft.md                    # text checker only

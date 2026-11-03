@@ -71,7 +71,8 @@ Todos esses foram pegos nos testes do próprio toc.
 
 1. **Contrato.** O Claude transforma o seu pedido em `.claude/toc/contrato.json`: o que você pediu e o que não pode ser mexido. Nada que você não pediu vira exigência.
 2. **Conferência.** Scripts olham a coisa de verdade: um navegador rola a página no desktop, no tablet e no celular (inclusive com movimento reduzido); Word e Excel abrem cópias dos arquivos para renderizar e recalcular; o texto passa por ortografia e padrões de texto de IA.
-3. **Olho de fora.** Um revisor (subagente) que não viu a entrega sendo feita lê as fotos e o texto e grava um veredito.
+3. **Olho de fora.** Um revisor (subagente) que não viu a entrega sendo feita lê as fotos e o texto e grava um veredito. Ele recebe uma ficha tipográfica com as fontes que o navegador ou o Word usaram de verdade, para não chutar fonte pela foto.
+   Depois disso a reconferência é barata: o hook recorta um "antes | agora" de cada pendência, mais o que mudou fora delas, e um modelo pequeno (Haiku) só marca resolvido ou não. Revisão inteira de novo só quando precisa.
 4. **A coceira.** Um hook de Stop não deixa o Claude terminar enquanto houver pendência no contrato, nos scripts ou no veredito. Cada rodada é comparada com a anterior: conserto que quebra outra coisa aparece em vermelho.
 5. **O botão de desligar.** 8 rodadas por padrão e, no fim, um relatório honesto do que ficou aberto. Nunca "ficou perfeito".
 
@@ -111,13 +112,14 @@ Erro bobo (texto de modelo esquecido, palavra repetida, vírgula colada, formato
 
 - Script mede. Gosto é do revisor e a palavra final é sua. "O laço fechou" quer dizer "o combinado foi conferido", não "ficou perfeito".
 - Texto que não cabe no slide é estimativa; o PowerPoint nunca é automatizado.
+- Página atrás de login ou senha de loja: rode `toc login URL` uma vez. Abre o Chrome, **você** entra e fecha a janela, e as próximas conferências reaproveitam a sessão (`.claude/toc/sessao.json`, fora do git). O Claude nunca digita sua senha. Se mesmo assim a conferência cair numa tela de login, ela para e avisa, em vez de dar nota para a página errada.
 - A lista de padrões de texto de IA em português é adaptação nossa e pode errar. Use `dispensas` no contrato; toda dispensa aparece no relatório final.
 - Uma rodada de página leva de 1 a 3 minutos; de documento, de 10 a 30 segundos.
 
 ## Comandos
 
 ```bash
-node ~/.claude/skills/toc/scripts/toc.mjs iniciar | conferir | esperar | status | pausar | retomar | parar
+node ~/.claude/skills/toc/scripts/toc.mjs iniciar | conferir | esperar | login URL | status | pausar | retomar | parar
 python -I ~/.claude/skills/toc/scripts/doc.py extrair ARQUIVO PASTA     # só o leitor de documentos
 python -I ~/.claude/skills/toc/scripts/doc.py recalcular planilha.xlsx  # grava o valor das fórmulas
 node ~/.claude/skills/toc/scripts/slop.mjs rascunho.md                  # só o verificador de texto

@@ -36,6 +36,16 @@ def ler_docx(ctx, caminho):
     vazios, ult_nivel, grupo, anterior_lista = 0, 0, 0, False
     ctx.info['tipo'] = 'docx'
 
+    tema = (None, None)
+    try:
+        with zipfile.ZipFile(caminho) as zt:
+            nt = next((n for n in zt.namelist() if re.match(r'word/theme/theme\d*\.xml$', n)), None)
+            if nt:
+                tx = zt.read(nt).decode('utf8', 'replace')
+                mj = re.search(r'<a:majorFont>\s*<a:latin typeface="([^"]+)"', tx); mn = re.search(r'<a:minorFont>\s*<a:latin typeface="([^"]+)"', tx)
+                tema = (mj.group(1) if mj else None, mn.group(1) if mn else None)
+    except Exception:
+        pass
     filhos = list(corpo.iterchildren())
     for idx, filho in enumerate(filhos):
         if filho.tag == qn('w:tbl'):
@@ -90,13 +100,18 @@ def ler_docx(ctx, caminho):
                 b = bool(r.bold) and r.text.strip() != ''
                 if b and not ant and palavras(r.text) <= 6: neg += 1
                 ant = b if r.text.strip() else ant
+        fic = None  # ficha tipográfica do bloco: fonte e tamanho que o Word vai usar (estilo herdado incluído)
+        if runs:
+            nm, tm = _fonte(runs[0], p)
+            nm = nm or (tema[0] if nivel is not None else tema[1]) or 'fonte do tema'  # título usa a fonte "major" do tema, texto a "minor"
+            fic = f'{nm}{f" {tm:g}pt" if tm else ""}{" negrito" if todas_neg else ""}'
         if nivel is not None and nivel >= 1:
             if ult_nivel and nivel > ult_nivel + 1:
                 ctx.A('titulo-pulou-nivel', 'corrigir', onde, f'"{texto[:50]}" é título {nivel} logo depois de um título {ult_nivel}: não pule nível (quebra o sumário e a navegação)', busca=texto[:40])
             ult_nivel = nivel; titulos.append(texto.strip())
-            ctx.B(onde, 'titulo', texto, nivel=nivel)
+            ctx.B(onde, 'titulo', texto, nivel=nivel, fonte=fic)
         elif nivel == 0:
-            titulos.append(texto.strip()); ctx.B(onde, 'titulo', texto, nivel=1)
+            titulos.append(texto.strip()); ctx.B(onde, 'titulo', texto, nivel=1, fonte=fic)
         else:
             proximo = next((filhos[j] for j in range(idx + 1, len(filhos)) if filhos[j].tag == qn('w:p') and ''.join(filhos[j].itertext()).strip()), None)
             tam_run = max((_fonte(r, p)[1] or 0) for r in runs) if runs else 0
@@ -106,9 +121,9 @@ def ler_docx(ctx, caminho):
                 manuais.append((onde, texto))
             if em_lista:
                 if not anterior_lista: grupo += 1
-                ctx.B(onde, 'lista', texto, grupo=grupo)
+                ctx.B(onde, 'lista', texto, grupo=grupo, fonte=fic)
             else:
-                ctx.B(onde, 'corpo' if palavras(texto) >= 4 else 'rotulo', texto, negrito=neg)
+                ctx.B(onde, 'corpo' if palavras(texto) >= 4 else 'rotulo', texto, negrito=neg, fonte=fic)
         anterior_lista = em_lista
         for h in filho.xpath('.//w:hyperlink'):
             tl = ''.join(h.itertext()).strip().lower()

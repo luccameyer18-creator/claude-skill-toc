@@ -11,7 +11,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {lerContrato, resumo} from './conferir.mjs';
+import {lerContrato, resumo, login} from './conferir.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const SKILL = path.dirname(AQUI);
@@ -95,19 +95,77 @@ function linhasFalhas(r, max = 25) {
   return l.length > max ? [...l.slice(0, max), `- … e mais ${l.length - max} em ${r.pasta}/resumo.md`] : l;
 }
 
-function falhasVeredito(ver, contrato) {
+// Pendências de um veredito, cada uma com a área que o revisor marcou (para a reconferência recortar).
+// Veredito completo: itens do contrato reprovados, achados bloqueia/corrigir no escopo e nota abaixo do mínimo.
+// Reconferência: itens não resolvidos, achados novos e dúvidas. A nota da reconferência não existe: quem
+// fecha é cada item confirmado, não um número (a nota mínima vale só para a revisão completa).
+function pendenciasDe(ver, contrato, est) {
   const l = [];
+  if (ver.tipo === 'reconferencia') {
+    const env = est?.reconf?.itens || [];
+    env.forEach((p, i) => {
+      const j = (ver.itens || []).find(x => x.ref === i + 1);
+      if (!j || !j.resolvido) l.push({...p, texto: `${p.texto}${j ? ` (ainda: ${j.evidencia || 'não resolvido'})` : ' (o reconferente não julgou)'}`});
+    });
+    for (const a of ver.novos || []) if ((a.gravidade === 'bloqueia' || a.gravidade === 'corrigir') && a.dentroDoEscopo !== false)
+      l.push({texto: `- [${a.gravidade}] ${a.onde || ''}: ${a.problema}${a.correcao ? ' → ' + a.correcao : ''}`, area: a.area});
+    for (const d of ver.duvidas || []) l.push({texto: `- [dúvida do reconferente] ${d}`, duvida: true});
+    return l;
+  }
   for (const it of contrato.itens.filter(i => i.tipo === 'revisor')) {
     const j = (ver.itensContrato || []).find(x => x.id === it.id);
-    if (!j) l.push(`- [contrato ${it.id}] o revisor não julgou: ${it.descricao || ''}`);
-    else if (!j.ok) l.push(`- [contrato ${it.id}] ${it.descricao || ''}: ${j.evidencia || 'não cumprido'}`);
+    if (!j) l.push({texto: `- [contrato ${it.id}] o revisor não julgou: ${it.descricao || ''}`, semArea: true});
+    else if (!j.ok) l.push({texto: `- [contrato ${it.id}] ${it.descricao || ''}: ${j.evidencia || 'não cumprido'}`, area: j.area});
   }
   for (const a of ver.achados || []) if ((a.gravidade === 'bloqueia' || a.gravidade === 'corrigir') && a.dentroDoEscopo !== false)
-    l.push(`- [${a.gravidade}] ${a.onde || ''}: ${a.problema}${a.correcao ? ' → ' + a.correcao : ''}`);
+    l.push({texto: `- [${a.gravidade}] ${a.onde || ''}: ${a.problema}${a.correcao ? ' → ' + a.correcao : ''}`, area: a.area});
   const minima = contrato.notaMinima ?? 80;
   if (typeof ver.nota === 'number' && ver.nota < minima)
-    l.push(`- nota do revisor ${ver.nota} abaixo de ${minima}${l.length ? '' : ' sem achado acionável: peça a ele os 3 pontos que mais tiram nota, com valor concreto'}`);
+    l.push({texto: `- nota do revisor ${ver.nota} abaixo de ${minima}${l.length ? ' (fecha quando as pendências acima forem confirmadas)' : ' sem achado acionável: peça a ele os 3 pontos que mais tiram nota, com valor concreto e área'}`, nota: true, semAcao: !l.length});
   return l;
+}
+const falhasVeredito = (ver, contrato, est) => pendenciasDe(ver, contrato, est).map(p => p.texto);
+const hashArq = arq => { try { return crypto.createHash('sha1').update(fs.readFileSync(arq)).digest('hex').slice(0, 12); } catch { return ''; } };
+
+// Monta o pacote da reconferência na pasta da rodada: recortes "antes | agora" e o roteiro autocontido.
+function pacoteReconferencia(raiz, r, ult, fp) {
+  const pend = ult.pendentes.filter(p => !p.nota);
+  const dest = path.join(raiz, r.pasta, 'reconferencia');
+  fs.mkdirSync(dest, {recursive: true});
+  const itensArq = path.join(dest, 'itens.json');
+  fs.writeFileSync(itensArq, JSON.stringify(pend.map((p, i) => ({ref: i + 1, area: p.area || null}))));
+  const py = spawnSync(process.env.TOC_PYTHON || 'python', ['-I', path.join(AQUI, 'visao.py'), 'recortes', path.join(raiz, r.pasta), path.join(raiz, ult.pasta), itensArq, dest], {encoding: 'utf8', timeout: 180000});
+  const rec = lerJSON(path.join(dest, 'recortes.json'), null);
+  if (!rec) return {erro: String(py.error?.message || py.stderr || 'visao.py não rodou').slice(-300)};
+  const folha = (r.folhas || []).filter(f => !/mudancas/.test(f)).map(f => path.join(raiz, r.pasta, f));
+  const linhas = [
+    `# Reconferência toc (impressão ${fp})`,
+    '',
+    `Você confere se cada pendência abaixo foi resolvida. Não é uma revisão nova: não procure problema fora desta lista,`,
+    `a não ser nas "mudanças fora das áreas" do fim, que é onde um conserto pode ter quebrado outra coisa.`,
+    `Cada imagem mostra a MESMA região "antes" (rodada revisada) e "agora". Abra só as imagens listadas.`,
+    `Não edite nada. Sua única escrita é ${path.join(raiz, PASTA, 'veredito.json')}.`,
+    '',
+    '## Pendências',
+  ];
+  pend.forEach((p, i) => {
+    const im = rec.itens.find(x => x.ref === i + 1)?.imagem;
+    linhas.push(`${i + 1}. ${p.texto.replace(/^- /, '')}`, `   imagem: ${im || `sem recorte (o revisor não marcou área): olhe ${folha[0] || 'a folha principal da rodada'}`}`);
+  });
+  linhas.push('', '## Mudanças fora das áreas');
+  if (rec.fora.length) for (const f of rec.fora) linhas.push(`- ${f.recorte} (${f.imagem}): mudou sem ser pendência. Piorou algo? Vira item em "novos".`);
+  else linhas.push('- nenhuma');
+  linhas.push('', '## Grave exatamente este JSON (UTF-8) e responda só com o caminho e uma linha',
+    '```json',
+    JSON.stringify({tipo: 'reconferencia', fp, itens: pend.map((_, i) => ({ref: i + 1, resolvido: true, evidencia: 'o que você viu no "agora"'})),
+      novos: [], duvidas: [], resumo: '1 frase'}, null, 1),
+    '```',
+    '- `resolvido`: true só se o "agora" mostra a correção pedida. Sem certeza: false e explique em `evidencia`, ou ponha em `duvidas`.',
+    '- `novos`: só problemas vistos nas mudanças fora das áreas ({"gravidade","onde","problema","correcao","dentroDoEscopo"}).',
+    '- Fonte, tamanho, peso ou cor: não afirme pela foto. Se precisar, confira a ficha tipográfica em ' + path.join(raiz, r.pasta, 'texto.md') + '.');
+  const md = path.join(dest, 'reconferencia.md');
+  fs.writeFileSync(md, linhas.join('\n') + '\n');
+  return {md, fora: rec.foraFracao, n: pend.length};
 }
 
 const lerStdin = () => new Promise(res => {
@@ -156,6 +214,10 @@ async function hook() {
   else r = rodarConferencia(raiz, est, fp);
 
   const naoMexer = contrato.naoMexer?.length ? `Não mexa em: ${contrato.naoMexer.join('; ')}.\n` : '';
+  const porta = (r.achados || []).find(a => a.regra === 'pagina-de-login' && !a.dispensado);
+  if (porta) return bloquear(`A conferência caiu numa tela de login ou senha (${porta.onde}), então não conferiu a página pedida.\n` +
+    `Você não digita senha nem código pelo usuário. Rode em segundo plano: ${toc} login ${contrato.url || ''} — abre um Chrome para o USUÁRIO entrar; ` +
+    `avise-o para entrar e fechar a janela. Com a sessão salva, rode ${toc} conferir. Sem o usuário por perto: ${toc} pausar e pergunte.`);
   if (r.erro) return bloquear(`A conferência não rodou:\n${r.erro}\nSe a página depende de servidor, suba-o (preview_start) e termine de novo. Precisa falar com o usuário? Rode ${toc} pausar antes.`);
   if (!r.passou) {
     const deTexto = (r.achados || []).some(a => !a.dispensado && a.gravidade !== 'nota' && /^texto-|^ortografia/.test(a.regra));
@@ -171,6 +233,29 @@ async function hook() {
     const rev = est.revisor;
     if (rev?.fp === fp && Date.now() - Date.parse(rev.desde) < REVISOR_MS)
       return bloquear(`O revisor já está trabalhando nesta impressão (${fp}). Não chame outro e não termine ainda: rode ${toc} esperar e siga quando o veredito chegar. Esta espera não gasta rodada.`, false);
+    // Já houve revisão com pendências e o Claude corrigiu: reconferência barata, se der.
+    // Dá quando: há pendências com ação, o contrato não mudou, ainda não foram 2 reconferências seguidas
+    // e as mudanças fora das áreas pendentes são pequenas (até 30% das imagens). Senão, revisão completa.
+    const ult = est.ultimaRevisao;
+    const acionaveis = (ult?.pendentes || []).filter(p => !p.nota);
+    const motivoCompleta = !ult ? '' : !acionaveis.length ? 'não há pendência com ação para confirmar'
+      : ult.contrato !== hashArq(contratoArq) ? 'o contrato mudou' : (est.reconferencias || 0) >= 2 ? 'já foram 2 reconferências seguidas'
+      : !fs.existsSync(path.join(raiz, ult.pasta || '-')) ? 'a rodada revisada foi apagada' : '';
+    if (ult && !motivoCompleta) {
+      const pac = pacoteReconferencia(raiz, r, ult, fp);
+      if (!pac.erro && pac.fora <= 0.3) {
+        est.reconf = {fp, itens: acionaveis.map((p, i) => ({...p, texto: `${i + 1}. ${p.texto.replace(/^- /, '')}`}))};
+        est.reconferencias = (est.reconferencias || 0) + 1;
+        const escalar = (ult.pendentes || []).some(p => p.duvida);
+        return bloquear(`A conferência mecânica passou (${r.pasta}, impressão ${fp}). Falta CONFIRMAR as ${pac.n} pendência(s) do revisor: reconferência barata, não revisão inteira.\n` +
+          `Chame um subagente (Agent, model "${escalar ? 'sonnet' : 'haiku'}", salvo regra do projeto) com este prompt: ` +
+          `"Você é o reconferente do toc. Leia e siga ${pac.md}. Não edite nada além do veredito." ` +
+          `Ele só olha os recortes "antes | agora" de cada pendência e as mudanças fora delas. Não escreva o veredito você mesmo.` +
+          (escalar ? ' (A reconferência anterior teve dúvida: por isso sonnet desta vez.)' : '') +
+          `\nDepois de chamar, rode ${toc} esperar.`);
+      }
+      if (pac.erro) process.stderr.write(`toc: reconferência indisponível (${pac.erro}); pedindo revisão completa\n`);
+    }
     const so = contrato.itens.filter(i => i.tipo === 'revisor').map(i => i.id);
     const folhas = (r.folhas || []).map(f => r.pasta + '/' + f);
     const mudancas = folhas.filter(f => /folha-mudancas/.test(f));
@@ -185,10 +270,16 @@ async function hook() {
       `\nDepois de chamar o revisor, rode ${toc} esperar: marca o revisor como em andamento (terminar enquanto ele trabalha não gasta rodada) e espera o veredito.` +
       (so.length ? `\nItens que só o revisor julga: ${so.join(', ')}.` : ''));
   }
-  if (est.revisor) { delete est.revisor; gravarJSON(arq, est); }
-  const falhas = falhasVeredito(ver, contrato);
+  if (est.revisor) delete est.revisor;
+  const pend = pendenciasDe(ver, contrato, est);
+  if (ver.tipo !== 'reconferencia') est.reconferencias = 0;
+  est.ultimaRevisao = {fp, pasta: r.pasta, tipo: ver.tipo || 'completa', contrato: hashArq(contratoArq), pendentes: pend};
+  gravarJSON(arq, est);
+  const falhas = pend.map(p => p.texto);
   if (falhas.length) {
-    return bloquear(`O revisor (nota ${ver.nota ?? '?'}) deixou pendências:\n${falhas.join('\n')}\n\n` +
+    const quem = ver.tipo === 'reconferencia' ? 'A reconferência' : `O revisor (nota ${ver.nota ?? '?'})`;
+    return bloquear(`${quem} deixou pendências:\n${falhas.join('\n')}\n\n` +
+      `Na próxima volta, a confirmação é barata (só os recortes destas pendências), desde que você mexa só nelas. ` +
       `Corrija e termine de novo; a conferência e o revisor rodam outra vez sobre o resultado novo. ${naoMexer}` +
       `Discorda de um achado? Explique no relatório final em vez de ignorar; não edite o veredito.`);
   }
@@ -207,6 +298,14 @@ function principal() {
   const sair = (msg, cod = 0) => { process.stdout.write(msg + '\n'); process.exit(cod); };
 
   if (cmd === 'hook') return hook().catch(e => { process.stderr.write('toc hook: ' + e.message + '\n'); process.exit(0); });
+  if (cmd === 'login') {
+    const url = resto.find(x => /^https?:|^file:/.test(x));
+    if (!url) sair('Uso: toc.mjs login URL [--sessao .claude/toc/sessao.json]', 1);
+    process.stdout.write(`Abrindo o Chrome em ${url}. Entre (senha da loja, conta, código) e FECHE A JANELA quando a página certa aparecer.\n`);
+    return login({url, raiz, arquivo: arg('sessao')}).then(({destino, salvas}) =>
+      sair(salvas ? `toc: sessão salva em ${destino}. As próximas conferências entram logadas. Não versione esse arquivo (já está no .gitignore da pasta).` : 'toc: não consegui salvar a sessão (a janela fechou antes de carregar?).', salvas ? 0 : 1))
+      .catch(e => sair('toc login: ' + e.message, 2));
+  }
   if (cmd === 'iniciar') {
     const contratoRel = arg('contrato', path.join(PASTA, 'contrato.json'));
     const c = lerContrato(path.resolve(raiz, contratoRel));
@@ -241,7 +340,7 @@ function principal() {
       const ver = lerJSON(verArq, null);
       if (ver?.fp === fp) {
         delete est.revisor; gravarJSON(arq, est); // revisor terminou: a próxima revisão não pode esperar por ele
-        const pend = falhasVeredito(ver, lerContrato(contratoArq));
+        const pend = falhasVeredito(ver, lerContrato(contratoArq), est);
         sair(`toc: veredito chegou (nota ${ver.nota ?? '?'}). ` + (pend.length ? `Pendências:\n${pend.join('\n')}` : 'Sem pendências: pode terminar.'));
       }
       Atomics.wait(pausa, 0, 0, 3000);

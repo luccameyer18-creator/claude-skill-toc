@@ -205,8 +205,22 @@ export function lintar(blocos, opc = {}) {
   return out;
 }
 
+// texto.md do revisor: ficha tipográfica (o que foi calculado, não o que parece na foto) e o texto com a fonte de cada bloco.
 export function textoMd(blocos) {
-  return (blocos || []).map(b => `[${b.onde}${b.papel ? ' · ' + b.papel : ''}] ${b.texto}`).join('\n\n') + '\n';
+  const bs = blocos || [], ficha = new Map();
+  for (const b of bs) {
+    if (!b.fonte) continue;
+    const fam = b.fonte.replace(/\s+\d+(?:[.,]\d+)?(?:px|pt).*$/, '');
+    const f = ficha.get(fam) || {papeis: new Set(), tams: new Set(), n: 0};
+    f.papeis.add(b.papel); f.n++;
+    const t = b.fonte.slice(fam.length).trim(); if (t) f.tams.add(t);
+    ficha.set(fam, f);
+  }
+  const cab = ficha.size ? ['# Ficha tipográfica (calculada, não estimada pela foto)', '',
+    `${ficha.size} família(s). Mesma família em tamanho ou peso diferente NÃO é outra fonte.`, '',
+    ...[...ficha].sort((a, b) => b[1].n - a[1].n).map(([fam, f]) => `- **${fam}** (${f.n} blocos; ${[...f.papeis].join(', ')}): ${[...f.tams].slice(0, 10).join(' · ')}`),
+    '', '# Texto', '', ''].join('\n') : '';
+  return cab + bs.map(b => `[${b.onde}${b.papel ? ' · ' + b.papel : ''}${b.fonte ? ' · ' + b.fonte : ''}] ${b.texto}`).join('\n\n') + '\n';
 }
 
 // uso rápido: node slop.mjs arquivo.txt [--curto]

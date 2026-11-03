@@ -241,9 +241,10 @@ def ler_pptx(ctx, caminho):
                 ps = [p for p in sh.text_frame.paragraphs if p.text.strip()]
                 bullets = max(bullets, len(ps))
                 grupo = sh.shape_id
+                fic = f"{m['paragrafos'][0]['nome']} {m['paragrafos'][0]['sz']:.0f}pt" if m['paragrafos'] else None  # ficha tipográfica
                 for p in ps:
                     papel = 'lista' if (p.level > 0 or len(ps) >= 3) else ('corpo' if palavras(p.text) >= 4 else 'rotulo')
-                    ctx.B(f'{onde}', papel, p.text, grupo=grupo)
+                    ctx.B(f'{onde}', papel, p.text, grupo=grupo, fonte=fic)
             for p in sh.text_frame.paragraphs:
                 for r in p.runs:
                     n_ = r.font.name or ''

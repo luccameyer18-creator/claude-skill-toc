@@ -27,6 +27,8 @@ O contrato diz o que "pronto" quer dizer **para este pedido**. Nada que o usuár
 | `pronto` | expressão JS verdadeira quando a página terminou de montar |
 | `esperaMs` / `passoMs` / `paralelo` | espera depois de pronto (1200), a cada passo de rolagem (700), visitantes ao mesmo tempo (3) |
 | `escalaEspaco` | escala de espaçamento em px; valores fora viram nota |
+| `navegador.sessao` | sessão salva por `toc login URL` (padrão `.claude/toc/sessao.json`): loja com senha, área logada. Não versione |
+| `paginaDeLogin` | `true` quando a página pedida É a tela de login (senão a conferência acha que foi barrada e para) |
 | `antes` | comando que roda (e termina) antes de cada conferência, a partir da raiz: build, cópia, geração. Falhou, a conferência não roda e o hook mostra o erro. Servidor que precisa reiniciar depois do build não cabe aqui: use o modo dev (recarrega sozinho) ou um servidor estático que releia a pasta |
 | `antesTimeoutMs` | limite do `antes` (padrão 600000). O hook do Claude Code tem 600 s no total: build longo + conferência pode estourar |
 

@@ -31,7 +31,10 @@ const BLOCOS_WEB = () => {
     vistos.add(t);
     const tag = el.tagName.toLowerCase(), cls = typeof el.className === 'string' ? el.className.trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.') : '';
     const papel = /^h\d$/.test(tag) ? 'titulo' : tag === 'li' ? 'lista' : (['a', 'button', 'label', 'summary', 'th'].includes(tag) || t.split(' ').length < 4) ? 'rotulo' : 'corpo';
+    // ficha tipográfica: o que o navegador calculou de verdade (o revisor não precisa adivinhar fonte pela foto)
+    const s = getComputedStyle(el), fam = s.fontFamily.split(',')[0].trim().replace(/^["']|["']$/g, '');
     out.push({onde: tag + (el.id ? '#' + el.id : cls ? '.' + cls : ''), papel, texto: t, origem: 'web',
+      fonte: `${fam} ${Math.round(parseFloat(s.fontSize))}px ${s.fontWeight}${s.fontStyle === 'italic' ? ' itálico' : ''}`,
       nivel: /^h\d$/.test(tag) ? +tag[1] : undefined, grupo: tag === 'li' ? [...document.querySelectorAll('ul,ol')].indexOf(el.parentElement) : undefined});
   }
   return out.slice(0, 600);
@@ -760,6 +763,33 @@ function visao(saida, anterior) {
   return {achados, folhas: v.folhas || [], avisos: []};
 }
 
+// "toc login": abre um Chrome visível na página, a pessoa entra (senha da loja, conta, 2FA) e fecha a janela.
+// Cookies e localStorage ficam num arquivo que os visitantes headless reaproveitam. O Chrome da pessoa não é tocado.
+export async function login({url, raiz = process.cwd(), arquivo, headless = false, fecharEmMs = 0}) { // headless e fecharEmMs: só para teste
+  const destino = path.resolve(raiz, arquivo || path.join('.claude', 'toc', 'sessao.json'));
+  fs.mkdirSync(path.dirname(destino), {recursive: true});
+  const ign = path.join(path.dirname(destino), '.gitignore');
+  const atual = fs.existsSync(ign) ? fs.readFileSync(ign, 'utf8') : '';
+  if (!atual.split(/\r?\n/).includes(path.basename(destino))) fs.writeFileSync(ign, atual + (atual && !atual.endsWith('\n') ? '\n' : '') + path.basename(destino) + '\n');
+  const pw = carregarPlaywright(raiz);
+  const browser = await pw.chromium.launch({headless, ...(CHROME ? {executablePath: CHROME} : {})});
+  const ctx = await browser.newContext({viewport: null, storageState: fs.existsSync(destino) ? destino : undefined});
+  const page = await ctx.newPage();
+  await page.goto(url).catch(() => {});
+  if (fecharEmMs) setTimeout(() => page.close().catch(() => {}), fecharEmMs);
+  let salvas = 0;
+  const salvar = async () => { try { fs.writeFileSync(destino, JSON.stringify(await ctx.storageState(), null, 1)); salvas++; } catch {} };
+  await new Promise(res => {
+    const t = setInterval(salvar, 1500);
+    const fim = () => { clearInterval(t); res(); };
+    browser.on('disconnected', fim);
+    ctx.on('close', fim);
+    page.on('close', async () => { await salvar(); fim(); });
+  });
+  await browser.close().catch(() => {});
+  return {destino, salvas};
+}
+
 export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '', anterior = ''}) {
   const c = lerContrato(contratoArq);
   if (!ehPagina(c)) {
@@ -785,13 +815,19 @@ export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '
   const dispensas = c.dispensas || [];
   const achados = [], itens = new Map(), fotos = {};
   for (const it of c.itens) itens.set(it.id, {id: it.id, descricao: it.descricao || '', tipo: it.tipo, origem: it.origem || 'pedido', ok: true, falhas: [], conferido: it.tipo !== 'revisor'});
-  const marcar = (id, tela, r) => { const v = itens.get(id); if (!r.ok) { v.ok = false; v.falhas.push(`${tela}: ${r.detalhe}`); } else v.detalhe = r.detalhe; };
+  const avaliados = new Set();
+  const marcar = (id, tela, r) => { avaliados.add(id); const v = itens.get(id); if (!r.ok) { v.ok = false; v.falhas.push(`${tela}: ${r.detalhe}`); } else v.detalhe = r.detalhe; };
   const encurta = u => u.length > 90 ? '…' + u.slice(-88) : u;
   const browser = await pw.chromium.launch({headless: true, ...(CHROME ? {executablePath: CHROME} : {})});
+  // página atrás de login: a sessão salva por "toc login" entra em todos os visitantes
+  const sessaoArq = path.resolve(raiz, c.navegador?.sessao || path.join('.claude', 'toc', 'sessao.json'));
+  const sessao = fs.existsSync(sessaoArq) ? sessaoArq : undefined;
   // cada combinação tela × movimento é um visitante; rodam em paralelo (contrato.paralelo, padrão 3)
   const fila = c.movimento.flatMap((mov, mi) => telas.map((tela, ti) => ({mov, mi, tela, ti})));
+  let barrado = false;
   const visitar = async ({mov, mi, tela, ti}) => {
-      const ctx = await browser.newContext({viewport: {width: tela.width, height: tela.height}, deviceScaleFactor: 1,
+      if (barrado) return; // já caiu em tela de login: não adianta abrir os outros visitantes
+      const ctx = await browser.newContext({viewport: {width: tela.width, height: tela.height}, deviceScaleFactor: 1, storageState: sessao,
         reducedMotion: mov === 'reduzido' ? 'reduce' : 'no-preference', isMobile: tela.width < 768, hasTouch: tela.width < 768});
       await ctx.addInitScript(INICIO);
       if (c.preparo) await ctx.addInitScript({content: c.preparo});
@@ -809,6 +845,20 @@ export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '
         catch { add([fora({regra: 'pronto', gravidade: 'corrigir', onde: '', detalhe: 'a condição "pronto" do contrato não ficou verdadeira em 90 s'})]); }
       }
       await page.waitForTimeout(c.esperaMs);
+      // Caiu numa tela de login ou senha (loja fechada, área logada)? Então não é a página pedida: para tudo e avisa.
+      const porta = await page.evaluate(() => ({
+        senha: [...document.querySelectorAll('input[type=password]')].some(i => { const r = i.getBoundingClientRect(); return r.width > 0 && r.height > 0; }),
+        url: location.href}));
+      const pedida = new URL(url), chegou = new URL(porta.url);
+      const desviou = chegou.pathname !== pedida.pathname && /log-?in|sign-?in|entrar|password|senha|auth|account|conta/i.test(chegou.pathname + chegou.search);
+      if (!c.paginaDeLogin && (porta.senha || desviou)) {
+        barrado = true;
+        add([{regra: 'pagina-de-login', gravidade: 'bloqueia', onde: porta.url,
+          detalhe: `a conferência abriu uma tela de login ou senha (${porta.url}), não a página pedida${sessao ? '; a sessão salva expirou' : ''}. ` +
+            `Rode "toc login ${url}": abre o Chrome, você entra uma vez e a sessão fica em ${path.relative(raiz, sessaoArq) || sessaoArq} (não versione esse arquivo). ` +
+            `Se a página pedida é a própria tela de login, ponha "paginaDeLogin": true no contrato.`}]);
+        await ctx.close(); return;
+      }
       const cls = await page.evaluate(() => window.__tocCLS || 0);
       if (cls > 0.1) add([fora({regra: 'salto-de-layout', gravidade: 'corrigir', onde: '', detalhe: `CLS ${cls.toFixed(3)} no carregamento (limite 0,1)`, valor: cls})]);
 
@@ -874,6 +924,10 @@ export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '
       for (let job; (job = fila.shift());) await visitar(job);
     });
     await Promise.all(trabalhadores);
+    // item que nenhum visitante chegou a avaliar (página não abriu, caiu em login) não passa por omissão
+    for (const v of itens.values()) if (v.conferido && !avaliados.has(v.id)) {
+      v.ok = false; v.falhas.push(barrado ? 'não conferido: a conferência caiu na tela de login' : 'não conferido: a página não chegou a ser avaliada');
+    }
     var folhasFeitas = await folhas(browser, saida, fotos);
   } finally { await browser.close(); }
 
