@@ -1,12 +1,18 @@
 ---
 name: toc
-description: Modo perfeccionista para qualquer entrega feita por IA (página web, documento Word, apresentação, planilha, CSV, PDF, Markdown). Transforma o pedido do usuário num contrato verificável, confere a entrega com script (fotos, contraste, texto cortado, fórmulas, ortografia, padrões de texto de IA, erros bobos) e um hook de Stop não deixa o Claude encerrar até o contrato passar e um revisor de fora aprovar, com limite de rodadas. Use quando o usuário pedir "modo toc", "/toc", "não para até ficar perfeito", "revisa nos mínimos detalhes", "não deixa passar erro bobo". Não use em toda tarefa: cada rodada custa de segundos a minutos.
+description: TOC (Transtorno Obsessivo-Compulsivo) / OCD for your agent. Não deixa o Claude dizer "pronto" com erro bobo na entrega. Transforma o pedido num contrato, confere a coisa de verdade (página web em 3 telas, Word, PowerPoint, Excel, CSV, PDF, Markdown: contraste, texto cortado, fórmula com erro, soma que pula linha, ortografia, padrões de texto de IA, sobra de ferramenta) e um hook de Stop segura o Claude até contrato, scripts e um revisor de fora fecharem, com limite de rodadas. Use quando o usuário pedir "modo toc", "/toc", "não para até ficar perfeito", "revisa nos mínimos detalhes", "não deixa passar erro bobo", "OCD mode", "don't stop until it's perfect". Não use em toda tarefa: cada rodada custa de segundos a minutos.
 ---
 
 # toc
 
+**TOC** (Transtorno Obsessivo-Compulsivo) · **OCD** (Obsessive-Compulsive Disorder), para o agente.
+
+Aquela coceira de voltar para conferir se trancou a porta, só que apontada para a entrega: enquanto houver
+`[inserir valor]` na proposta, `#DIV/0!` no total ou botão cobrindo botão no celular, o Claude não para.
+
 A obsessão é com **o que o usuário pediu**, não com o gosto do Claude. "Perfeito" é o contrato fechado,
 conferido por script e por um revisor que não fez a entrega. Quem impede de parar é o hook, não a vontade.
+E tem botão de desligar: limite de rodadas e relatório honesto do que ficou aberto.
 
 `<skill>` abaixo é a pasta desta skill (onde está este arquivo). `toc` abrevia `node "<skill>/scripts/toc.mjs"`.
 
