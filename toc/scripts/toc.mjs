@@ -2,8 +2,10 @@
 // toc: liga, desliga e confere o laço que não deixa o Claude parar antes de o contrato fechar.
 // Uso: node toc.mjs iniciar [--contrato .claude/toc/contrato.json] [--max 8]
 //      node toc.mjs conferir | status | pausar | retomar | parar | impressao
+//      node toc.mjs esperar [--max-s 600]   (marca o revisor como em andamento e espera o veredito)
 //      node toc.mjs hook        (hook Stop do Claude Code; lê o JSON do stdin)
-// Estado em <projeto>/.claude/toc/estado.json. Sem esse arquivo (ou com ativo=false) o hook não faz nada.
+// Estado em <projeto>/.claude/toc/estado.json, achado subindo a partir da pasta atual.
+// Sem esse arquivo (ou com ativo=false) o hook não faz nada.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -19,6 +21,15 @@ const PULAR = new Set(['node_modules', '.git', '.claude', '.next', '.cache', '__
 const lerJSON = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
 const gravarJSON = (arq, obj) => { fs.mkdirSync(path.dirname(arq), {recursive: true}); const t = `${arq}.${process.pid}.tmp`; fs.writeFileSync(t, JSON.stringify(obj, null, 2)); fs.renameSync(t, arq); };
 const arqEstado = raiz => path.join(raiz, PASTA, 'estado.json');
+// O Claude Code passa a pasta atual da sessão, que muda quando um comando entra numa subpasta.
+// Subir até achar o laço evita que ele "desligue" sozinho por causa de um cd.
+const acharRaiz = inicio => {
+  for (let d = path.resolve(inicio); ; d = path.dirname(d)) {
+    if (fs.existsSync(arqEstado(d))) return d;
+    if (path.dirname(d) === d) return path.resolve(inicio);
+  }
+};
+const REVISOR_MS = 20 * 60 * 1000; // revisor marcado há mais que isso conta como abandonado
 const rel = (raiz, p) => path.relative(raiz, p).split(path.sep).join('/');
 
 // Impressão digital do que está sendo construído: caminho, tamanho e data de cada arquivo observado
@@ -46,7 +57,17 @@ export function impressao(raiz, contrato, contratoArq) {
   return h.digest('hex').slice(0, 12);
 }
 
+// Contrato com "antes": roda o comando (ex.: build) e espera terminar; se falhar, a conferência nem começa.
+function rodarAntes(raiz, contrato) {
+  if (!contrato.antes) return '';
+  const r = spawnSync(contrato.antes, {cwd: raiz, shell: true, encoding: 'utf8', timeout: contrato.antesTimeoutMs ?? 600000});
+  if (r.status === 0) return '';
+  return `o comando "antes" (${contrato.antes}) falhou:\n` + (r.error?.message || r.stderr || r.stdout || 'sem saída').trim().split('\n').slice(-8).join('\n');
+}
+
 function rodarConferencia(raiz, est, fp) {
+  const erroAntes = rodarAntes(raiz, lerContrato(path.resolve(raiz, est.contrato)));
+  if (erroAntes) return {passou: false, erro: erroAntes, pasta: ''};
   const n = (est.conferencias || 0) + 1;
   const saida = path.join(raiz, PASTA, `rodada-${String(n).padStart(2, '0')}`);
   fs.rmSync(saida, {recursive: true, force: true});
@@ -97,14 +118,19 @@ const lerStdin = () => new Promise(res => {
 
 async function hook() {
   const entrada = lerJSON0(await lerStdin());
-  const raiz = entrada.cwd || process.cwd();
+  const raiz = acharRaiz(entrada.cwd || process.cwd());
   const arq = arqEstado(raiz);
   const est = lerJSON(arq, null);
   if (!est || !est.ativo) return;
   if (est.sessao && entrada.session_id && est.sessao !== entrada.session_id) return; // laço de outra sessão
   if (!est.sessao && entrada.session_id) est.sessao = entrada.session_id;
   const toc = `"${process.execPath}" "${path.join(AQUI, 'toc.mjs')}"`;
-  const bloquear = motivo => {
+  const bloquear = (motivo, contar = true) => {
+    if (!contar) { // espera de revisor: segura o fim sem gastar rodada
+      gravarJSON(arq, est);
+      process.stdout.write(JSON.stringify({decision: 'block', reason: motivo, systemMessage: `toc: esperando o revisor (rodada ${est.rodada || 0}/${est.max})`}));
+      return;
+    }
     est.rodada = (est.rodada || 0) + 1;
     const ultima = est.rodada >= est.max;
     gravarJSON(arq, est);
@@ -142,13 +168,24 @@ async function hook() {
   }
   const ver = lerJSON(path.join(raiz, PASTA, 'veredito.json'), null);
   if (!ver || ver.fp !== fp) {
+    const rev = est.revisor;
+    if (rev?.fp === fp && Date.now() - Date.parse(rev.desde) < REVISOR_MS)
+      return bloquear(`O revisor já está trabalhando nesta impressão (${fp}). Não chame outro e não termine ainda: rode ${toc} esperar e siga quando o veredito chegar. Esta espera não gasta rodada.`, false);
     const so = contrato.itens.filter(i => i.tipo === 'revisor').map(i => i.id);
+    const folhas = (r.folhas || []).map(f => r.pasta + '/' + f);
+    const mudancas = folhas.filter(f => /folha-mudancas/.test(f));
+    // A 1ª revisão é completa; as seguintes confirmam as correções sobre o veredito anterior (custa bem menos).
+    const confirmacao = ver ? `\nRodada de CONFIRMAÇÃO (já existe veredito, nota ${ver.nota ?? '?'}): use a seção "Rodada de confirmação" do roteiro. ` +
+      `Passe ao revisor a lista do que você mudou e por quê, o veredito anterior (${PASTA.split(path.sep).join('/')}/veredito.json, ele lê antes de sobrescrever)` +
+      (mudancas.length ? ` e as folhas de mudanças (${mudancas.join(', ')})` : '') + '; ele não refaz a revisão inteira.' : '';
     return bloquear(`A conferência mecânica passou (${r.pasta}, impressão ${fp}). Falta o olho de fora.\n` +
       `Chame um subagente revisor (Agent, model "sonnet", salvo regra do projeto) com o roteiro de ${path.join(SKILL, 'referencias', 'revisor.md')}, preenchendo: ` +
-      `contrato ${est.contrato}, relatório ${r.pasta}/relatorio.json, texto extraído ${r.pasta}/texto.md, folhas ${(r.folhas || []).map(f => r.pasta + '/' + f).join(', ')}, impressão ${fp}. ` +
-      `Ele grava ${PASTA.split(path.sep).join('/')}/veredito.json. Não escreva o veredito você mesmo.` +
+      `contrato ${est.contrato}, relatório ${r.pasta}/relatorio.json, texto extraído ${r.pasta}/texto.md, folhas ${folhas.join(', ')}, impressão ${fp}. ` +
+      `Ele grava ${PASTA.split(path.sep).join('/')}/veredito.json. Não escreva o veredito você mesmo.` + confirmacao +
+      `\nDepois de chamar o revisor, rode ${toc} esperar: marca o revisor como em andamento (terminar enquanto ele trabalha não gasta rodada) e espera o veredito.` +
       (so.length ? `\nItens que só o revisor julga: ${so.join(', ')}.` : ''));
   }
+  if (est.revisor) { delete est.revisor; gravarJSON(arq, est); }
   const falhas = falhasVeredito(ver, contrato);
   if (falhas.length) {
     return bloquear(`O revisor (nota ${ver.nota ?? '?'}) deixou pendências:\n${falhas.join('\n')}\n\n` +
@@ -164,7 +201,7 @@ const lerJSON0 = s => { try { return JSON.parse(s || '{}'); } catch { return {};
 function principal() {
   const [cmd = 'status', ...resto] = process.argv.slice(2);
   const arg = (n, p) => { const i = resto.indexOf('--' + n); return i >= 0 ? resto[i + 1] : p; };
-  const raiz = path.resolve(arg('raiz', process.cwd()));
+  const raiz = arg('raiz') ? path.resolve(arg('raiz')) : acharRaiz(process.cwd());
   const arq = arqEstado(raiz);
   const est = lerJSON(arq, null);
   const sair = (msg, cod = 0) => { process.stdout.write(msg + '\n'); process.exit(cod); };
@@ -191,6 +228,26 @@ function principal() {
     if (r.erro) sair('toc: a conferência não rodou:\n' + r.erro, 2);
     sair(resumo(r, 30).trimEnd() + `\n\nPasta: ${r.pasta} · impressão ${fp}`, r.passou ? 0 : 1);
   }
+  if (cmd === 'esperar') {
+    // Marca o revisor desta impressão como em andamento e espera o veredito dela (o hook não gasta rodada enquanto isso).
+    const contratoArq = path.resolve(raiz, est.contrato);
+    const fp = impressao(raiz, lerContrato(contratoArq), contratoArq);
+    est.revisor = {fp, desde: new Date().toISOString()};
+    gravarJSON(arq, est);
+    const limite = Date.now() + Number(arg('max-s', 600)) * 1000;
+    const verArq = path.join(raiz, PASTA, 'veredito.json');
+    const pausa = new Int32Array(new SharedArrayBuffer(4));
+    while (Date.now() < limite) {
+      const ver = lerJSON(verArq, null);
+      if (ver?.fp === fp) {
+        delete est.revisor; gravarJSON(arq, est); // revisor terminou: a próxima revisão não pode esperar por ele
+        const pend = falhasVeredito(ver, lerContrato(contratoArq));
+        sair(`toc: veredito chegou (nota ${ver.nota ?? '?'}). ` + (pend.length ? `Pendências:\n${pend.join('\n')}` : 'Sem pendências: pode terminar.'));
+      }
+      Atomics.wait(pausa, 0, 0, 3000);
+    }
+    sair(`toc: o veredito da impressão ${fp} não chegou a tempo. O revisor ainda roda? Rode esperar de novo; se ele morreu, chame outro.`, 1);
+  }
   if (cmd === 'impressao') { const a = path.resolve(raiz, est.contrato); sair(impressao(raiz, lerContrato(a), a)); }
   if (cmd === 'pausar') { est.ativo = false; est.pausado = true; gravarJSON(arq, est); sair('toc pausado. Retome com: toc.mjs retomar'); }
   if (cmd === 'retomar') { est.ativo = true; delete est.pausado; delete est.fim; gravarJSON(arq, est); sair(`toc retomado na rodada ${est.rodada}/${est.max}.`); }
@@ -200,6 +257,6 @@ function principal() {
     sair(`toc ${est.ativo ? 'ligado' : 'desligado'}${est.fim ? ' (' + est.fim + ')' : ''}${est.pausado ? ' (pausado)' : ''} · rodada ${est.rodada}/${est.max} · contrato ${est.contrato}` +
       (r ? `\n\n${resumo(r, 20).trimEnd()}` : '\nAinda sem conferência.'));
   }
-  sair(`toc: comando desconhecido "${cmd}". Use iniciar, conferir, status, pausar, retomar, parar ou hook.`, 1);
+  sair(`toc: comando desconhecido "${cmd}". Use iniciar, conferir, esperar, status, pausar, retomar, parar ou hook.`, 1);
 }
 principal();

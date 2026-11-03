@@ -117,7 +117,7 @@ Erro bobo (texto de modelo esquecido, palavra repetida, vírgula colada, formato
 ## Comandos
 
 ```bash
-node ~/.claude/skills/toc/scripts/toc.mjs iniciar | conferir | status | pausar | retomar | parar
+node ~/.claude/skills/toc/scripts/toc.mjs iniciar | conferir | esperar | status | pausar | retomar | parar
 python -I ~/.claude/skills/toc/scripts/doc.py extrair ARQUIVO PASTA     # só o leitor de documentos
 python -I ~/.claude/skills/toc/scripts/doc.py recalcular planilha.xlsx  # grava o valor das fórmulas
 node ~/.claude/skills/toc/scripts/slop.mjs rascunho.md                  # só o verificador de texto
