@@ -118,7 +118,7 @@ Silly mistakes (leftover placeholders, doubled words, glued commas, mixed number
 ## Commands
 
 ```bash
-node ~/.claude/skills/toc/scripts/toc.mjs iniciar | conferir | status | pausar | retomar | parar
+node ~/.claude/skills/toc/scripts/toc.mjs iniciar | conferir | esperar | status | pausar | retomar | parar
 python -I ~/.claude/skills/toc/scripts/doc.py extrair FILE OUT_DIR     # document checker only
 python -I ~/.claude/skills/toc/scripts/doc.py recalcular sheet.xlsx     # save formula values
 node ~/.claude/skills/toc/scripts/slop.mjs draft.md                    # text checker only

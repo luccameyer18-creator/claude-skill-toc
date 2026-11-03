@@ -52,3 +52,18 @@ Grave exatamente este formato (JSON puro, UTF-8):
 ```
 
 Responda ao final só com o caminho do veredito e uma linha de resumo.
+
+---
+
+## Rodada de confirmação
+
+Da 2ª revisão em diante, troque o "Como olhar" acima por este bloco e acrescente ao prompt a lista do que mudou
+(cada correção em uma linha, com o valor novo: "botão 52px → 64px; nota do cartão acima dos botões").
+No site do Igor (03/11/2026) a revisão completa custou 150 mil tokens e a de confirmação, 97 mil, com o mesmo rigor sobre o que mudou.
+
+**Como olhar (confirmação)**
+1. Leia o veredito anterior em `<raiz>/.claude/toc/veredito.json` antes de sobrescrever. Mantenha as `nota` que ainda valem.
+2. Abra primeiro as folhas de mudanças (`folha-mudancas-*.jpg`): confira cada correção da lista e procure "corrigiu A e quebrou B" dentro dos retângulos vermelhos.
+3. Passe os olhos nas folhas principais só atrás de regressão. No máximo 4 imagens avulsas.
+4. Julgue de novo os itens `tipo: "revisor"`; se a parte deles não mudou, repita a evidência anterior.
+5. Não reabra achados que o Claude principal explicou como fora do escopo ou decisão do usuário (eles vêm na lista); julgue só se a explicação se sustenta.

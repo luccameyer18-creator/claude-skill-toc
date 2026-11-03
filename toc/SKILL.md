@@ -40,7 +40,7 @@ E tem botão de desligar: limite de rodadas e relatório honesto do que ficou ab
 3. **Faça ou corrija.** Para ver o estado sem esperar o hook: `toc conferir`. Abra as folhas de fotos (`rodada-NN/folha-*.jpg`) e o `texto.md`: olhar é obrigatório.
 4. **Tente terminar.** O hook confere (ou reaproveita, se nada mudou) e responde:
    - pendências mecânicas: corrija `bloqueia` antes de `corrigir`; texto se conserta com `referencias/texto.md`;
-   - "falta o olho de fora": chame o revisor (Agent, `model: "sonnet"`) com `referencias/revisor.md` preenchido. Não escreva o veredito você mesmo. Se o projeto exigir outro modelo para delegar, pause e pergunte;
+   - "falta o olho de fora": chame o revisor (Agent, `model: "sonnet"`) com `referencias/revisor.md` preenchido e, em seguida, rode `toc esperar`: ele marca o revisor como em andamento e espera o veredito (tentar terminar enquanto o revisor trabalha não gasta rodada). Da 2ª revisão em diante é **rodada de confirmação**: passe a lista do que mudou e o veredito anterior, não peça a revisão inteira de novo. Não escreva o veredito você mesmo. Se o projeto exigir outro modelo para delegar, pause e pergunte;
    - pendências do revisor: corrija; conferência e revisor rodam de novo sobre o resultado novo;
    - nada: o laço fecha.
 5. **Relatório final** (sua última mensagem quando achar que fechou; se o hook devolver, continue e reescreva no fim).

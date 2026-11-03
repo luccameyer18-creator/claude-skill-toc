@@ -23,25 +23,26 @@ if (fs.existsSync(cfgArq)) {
   fs.copyFileSync(cfgArq, cfgArq + '.bak-toc');
 }
 const script = barra(path.join(destino, 'scripts', 'toc.mjs'));
+const guarda = barra(path.join(destino, 'scripts', 'hook.sh'));
+const node = barra(process.execPath);
 let comando;
 if (process.platform === 'win32') {
-  // Node demora para abrir no Windows: o Git Bash testa antes se há laço no projeto
+  // Node demora para abrir no Windows: o Git Bash procura o laço (na pasta atual ou acima) antes de abri-lo
   const bash = ['C:/Program Files/Git/bin/bash.exe', 'C:/Program Files (x86)/Git/bin/bash.exe'].find(p => fs.existsSync(p));
-  const node = barra(process.execPath);
-  comando = bash ? `"${bash}" -c "test -f .claude/toc/estado.json || exit 0; exec '${node}' '${script}' hook"` : `"${node}" "${script}" hook`;
+  comando = bash ? `"${bash}" "${guarda}" "${node}"` : `"${node}" "${script}" hook`;
 } else {
-  comando = `test -f .claude/toc/estado.json || exit 0; exec node "${script}" hook`;
+  comando = `bash "${guarda}" "${node}"`;
 }
 cfg.hooks ??= {};
 cfg.hooks.Stop ??= [];
-if (JSON.stringify(cfg.hooks.Stop).includes('toc.mjs')) {
-  console.log('✓ o hook de Stop do toc já estava no settings.json');
-} else {
-  cfg.hooks.Stop.push({hooks: [{type: 'command', command: comando, timeout: 600}]});
-  fs.mkdirSync(path.dirname(cfgArq), {recursive: true});
-  fs.writeFileSync(cfgArq, JSON.stringify(cfg, null, 2) + '\n');
-  console.log(`✓ hook de Stop adicionado em ${cfgArq} (backup em settings.json.bak-toc)`);
-}
+// troca o hook antigo (que só olhava a pasta atual) pelo novo; senão, acrescenta
+let trocou = false;
+for (const grupo of cfg.hooks.Stop) for (const h of grupo.hooks || [])
+  if (typeof h.command === 'string' && h.command.includes('toc.mjs') || typeof h.command === 'string' && h.command.includes('/toc/scripts/hook.sh')) { h.command = comando; h.timeout = 600; trocou = true; }
+if (!trocou) cfg.hooks.Stop.push({hooks: [{type: 'command', command: comando, timeout: 600}]});
+fs.mkdirSync(path.dirname(cfgArq), {recursive: true});
+fs.writeFileSync(cfgArq, JSON.stringify(cfg, null, 2) + '\n');
+console.log(`✓ hook de Stop ${trocou ? 'atualizado' : 'adicionado'} em ${cfgArq} (backup em settings.json.bak-toc)`);
 
 // o que falta para cada tipo de entrega
 const py = process.env.TOC_PYTHON || 'python';

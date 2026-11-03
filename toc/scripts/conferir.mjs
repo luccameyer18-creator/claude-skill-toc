@@ -380,7 +380,9 @@ async function sonda(o) {
 
   if (o.modo === 'global') {
     const corpo = document.body.innerText;
-    const lixo = corpo.match(/lorem ipsum|\bundefined\b|\bNaN\b|\[object Object\]|\bTODO\b|\bFIXME\b|\{\{[^}]{0,40}\}\}/i);
+    // Fronteira que entende acento (o \b do JS acha "todo" dentro de "método") e grafia exata
+    // (com /i, "todo dia" e "Nan" de nome próprio viravam texto provisório).
+    const lixo = corpo.match(/[Ll]orem ipsum|(?<![\p{L}\p{N}_])(?:undefined|NaN|TODO|FIXME)(?![\p{L}\p{N}_])|\[object Object\]|\{\{[^}]{0,40}\}\}/u);
     if (lixo) { const i = lixo.index; achar('texto-provisorio', 'bloqueia', null, `aparece "${corpo.slice(Math.max(0, i - 30), i + 40).replace(/\s+/g, ' ')}"`); }
     for (const im of document.images) {
       if (!visivel(im) || ocultoAT(im)) continue;
@@ -553,7 +555,7 @@ async function sonda(o) {
   if (o.modo === 'itens') {
     const norm = s => String(s ?? '').replace(/\s+/g, ' ').trim();
     const q = sel => { const el = document.querySelector(sel); if (!el) throw new Error(`não achei ${sel}`); return el; };
-    const avaliar = it => {
+    const avaliar = async it => {
       switch (it.tipo) {
         case 'existe': { const el = document.querySelector(it.seletor); if (!el) return {ok: false, detalhe: `não achei ${it.seletor}`}; return cs(el).display === 'none' ? {ok: false, detalhe: 'existe, mas está com display:none'} : {ok: true, detalhe: 'achado'}; }
         case 'texto': {
@@ -581,13 +583,16 @@ async function sonda(o) {
           return {ok, detalhe: `${it.prop} = ${v}`};
         }
         case 'js': {
-          const r = (0, eval)(it.expr);
+          const r = await (0, eval)(it.expr); // aceita Promise: rolar, esperar e medir
           return r && typeof r === 'object' ? {ok: !!r.ok, detalhe: String(r.detalhe ?? '')} : {ok: !!r, detalhe: String(r)};
         }
         default: return {ok: true, detalhe: 'fora do script'};
       }
     };
-    return {itens: o.itens.map(it => { try { return {id: it.id, ...avaliar(it)}; } catch (e) { return {id: it.id, ok: false, detalhe: e.message}; } })};
+    // um item por vez: item js pode rolar a página, e o seguinte precisa achá-la como estava
+    const itens = [];
+    for (const it of o.itens) { try { itens.push({id: it.id, ...(await avaliar(it))}); } catch (e) { itens.push({id: it.id, ok: false, detalhe: e.message}); } }
+    return {itens};
   }
 
   if (o.modo === 'contrasteItem') {
