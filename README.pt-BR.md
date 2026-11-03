@@ -75,6 +75,9 @@ Todos esses foram pegos nos testes do próprio toc.
    Depois disso a reconferência é barata: o hook recorta um "antes | agora" de cada pendência, mais o que mudou fora delas, e um modelo pequeno (Haiku) só marca resolvido ou não. Revisão inteira de novo só quando precisa.
 4. **A coceira.** Um hook de Stop não deixa o Claude terminar enquanto houver pendência no contrato, nos scripts ou no veredito. Cada rodada é comparada com a anterior: conserto que quebra outra coisa aparece em vermelho.
 5. **O botão de desligar.** 8 rodadas por padrão e, no fim, um relatório honesto do que ficou aberto. Nunca "ficou perfeito".
+6. **Não sequestra a conversa.** O laço é do pedido que o ligou. Mandou mensagem nova, ele pausa sozinho (o Claude só retoma se for a mesma entrega). Seis horas parado, ele desliga.
+
+**Duas versões, não uma espremida.** Em página web o toc confere desktop e celular como projetos separados: celular sem nenhuma regra `@media` que mude o layout, colunas de texto espremidas abaixo de 150px, texto corrido abaixo de 14px, título com o mesmo tamanho nas duas telas. E o revisor sempre julga se cada tela tem a sua composição.
 
 ## O que ele confere
 
@@ -107,6 +110,12 @@ Erro bobo (texto de modelo esquecido, palavra repetida, vírgula colada, formato
 - Página web: Playwright no projeto (`npm i -D playwright`) e Chrome
 - Documentos: Python 3 com `pip install python-docx python-pptx openpyxl pymupdf pillow`
 - Opcional, Windows com Office: `pip install pywin32` para corretor do Word, páginas renderizadas e cálculo no Excel. Sem isso, essas partes aparecem como `nao-conferido` no relatório, em vez de passarem caladas.
+
+## Gastando menos token
+
+- Os revisores do toc são agentes enxutos (`toc-revisor`, `toc-reconferente`) que só leem e gravam arquivo. Subagente comum herda todas as ferramentas e MCPs instalados, e era daí que vinha a maior parte dos ~65–70 mil tokens de cada chamada.
+- A reconferência manda ao Haiku só recortes "antes | agora" das pendências, não a entrega inteira para um modelo maior.
+- Combina com [caveman](https://github.com/JuliusBrussee/caveman) (respostas mais curtas), [rtk](https://github.com/rtk-ai/rtk) (saída de comando menor) e [context-mode](https://github.com/mksglu/context-mode) (tira a saída bruta das ferramentas do contexto).
 
 ## Limites, sem enfeite
 

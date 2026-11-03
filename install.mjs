@@ -15,6 +15,11 @@ const destino = path.join(HOME, '.claude', 'skills', 'toc');
 fs.mkdirSync(path.dirname(destino), {recursive: true});
 fs.cpSync(path.join(aqui, 'toc'), destino, {recursive: true, filter: s => !s.includes('__pycache__')});
 console.log(`✓ skill copiada para ${destino}`);
+// agentes enxutos (só ler e gravar): o revisor não herda todas as ferramentas e MCPs, o que corta o custo fixo de cada chamada
+const agentes = path.join(HOME, '.claude', 'agents');
+fs.mkdirSync(agentes, {recursive: true});
+for (const a of fs.readdirSync(path.join(aqui, 'toc', 'agentes'))) fs.copyFileSync(path.join(aqui, 'toc', 'agentes', a), path.join(agentes, a));
+console.log(`✓ agentes toc-revisor e toc-reconferente em ${agentes} (valem a partir da próxima sessão)`);
 
 const cfgArq = path.join(HOME, '.claude', 'settings.json');
 let cfg = {};

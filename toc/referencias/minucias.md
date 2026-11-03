@@ -31,6 +31,8 @@ Rodado em cada tela e modo de movimento do contrato, rolando a página do topo a
 | `repetido` | nota | a mesma frase duas vezes na mesma tela (menu e rodapé não contam) |
 | `cinza-sobre-cor`, `hierarquia-achatada`, `tamanhos-demais`, `tudo-centralizado`, `titulo-longo`, `rotulo-acima-do-titulo`, `espaco-do-titulo`, `linha-longa`, `texto-gradiente`, `faixa-lateral`, `animacao-elastica`, `numeros-tabulares`, `superficies-do-navegador` | nota | sinais de interface gerada e de acabamento (ideias do Impeccable e do Taste Skill): texto cinza em fundo colorido, títulos e texto quase do mesmo tamanho, mais de 9 tamanhos, mais de 72% centralizado, título de 4+ linhas, etiqueta miúda ou 01/02 acima do título, título mais longe do próprio texto, linha com mais de 95 caracteres, gradiente no texto, faixa colorida na lateral de cartão, easing elástico, números de tabela sem algarismos tabulares, seleção de texto sem a cor da marca |
 | `mudanca-visual` | nota | diff com a rodada anterior (tolerante a serrilhado; canvas, vídeo e animação em loop ficam de fora): mostra onde a imagem mudou, para pegar "corrigiu A e quebrou B" (`folha-mudancas`) |
+| `mobile-sem-versao`, `mobile-colunas-espremidas`, `mobile-letra-pequena` | corrigir | celular sem nenhuma regra `@media` que mude o layout (é o desktop encolhido); colunas de texto lado a lado com menos de 150px no celular; texto corrido abaixo de 14px |
+| `mobile-titulo-igual` | nota | título principal com o mesmo tamanho no celular e no desktop |
 | `olhar-apertado` | nota | teste do olhar apertado: borra a primeira tela e acha onde o olho cai; avisa quando não é no título nem na ação principal |
 
 Texto com `aria-hidden` (visual decorativo) fica fora das medições de texto.

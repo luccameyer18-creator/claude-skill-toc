@@ -75,6 +75,9 @@ Every one of these was caught in toc's own tests.
    After that, re-checks are cheap: the hook crops a "before | after" of each open issue, plus anything that changed outside those spots, and a small model (Haiku) just ticks them off. Nothing gets re-reviewed from scratch unless it has to be.
 4. **The itch.** A Stop hook won't let Claude finish while anything in the contract, the scripts or the verdict is still open. Each round is diffed against the last one, so a fix that breaks something else shows up in red.
 5. **The off switch.** 8 rounds by default, then an honest report of what's still open. Never "it's perfect".
+6. **It never hijacks your chat.** The loop belongs to the request that started it. Send a new message and it pauses on its own (Claude resumes it only if you're still on the same deliverable). Six idle hours and it switches off.
+
+**Two versions, not one squeezed.** For web pages toc checks desktop and phone as separate designs: a phone layout with no `@media` rule that changes the layout, text columns squeezed under 150px, body text under 14px, a headline the same size on both. And the reviewer always judges whether each screen has its own composition.
 
 ## What it checks
 
@@ -107,6 +110,12 @@ Silly mistakes (leftover placeholders, doubled words, glued commas, mixed number
 - Web pages: Playwright in the project (`npm i -D playwright`) and Chrome
 - Documents: Python 3 with `pip install python-docx python-pptx openpyxl pymupdf pillow`
 - Optional, Windows with Office: `pip install pywin32` for Word's spell checker, real page renders and Excel recalculation. Without it, those parts show up as `nao-conferido` in the report instead of silently passing.
+
+## Spending fewer tokens
+
+- toc's reviewers are lean agents (`toc-revisor`, `toc-reconferente`) that only read and write files. A general-purpose subagent inherits every tool and MCP server you have installed, which is most of the ~65–70k tokens each call used to cost.
+- Re-checks send only "before | after" crops of the open issues to Haiku, not the whole deliverable to a bigger model.
+- Pairs well with [caveman](https://github.com/JuliusBrussee/caveman) (shorter answers), [rtk](https://github.com/rtk-ai/rtk) (smaller command output) and [context-mode](https://github.com/mksglu/context-mode) (keeps raw tool output out of the context).
 
 ## Honest limits
 

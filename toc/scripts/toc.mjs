@@ -174,6 +174,29 @@ const lerStdin = () => new Promise(res => {
   process.stdin.on('data', c => (d += c)); process.stdin.on('end', () => res(d));
 });
 
+// Última mensagem que a PESSOA escreveu na sessão (não conta retorno de ferramenta, aviso de hook nem mensagem do sistema).
+const NAO_E_PESSOA = /^(Stop hook feedback|<local-command|<command-name|<command-message|<system-reminder|<task-notification|\[Request interrupted|Caveat:)/;
+export function ultimaMensagemDaPessoa(transcript) {
+  let ultima = null;
+  try {
+    for (const l of fs.readFileSync(transcript, 'utf8').split('\n')) {
+      if (!l.includes('"type":"user"') && !l.includes('queued_command')) continue;
+      let d; try { d = JSON.parse(l); } catch { continue; }
+      // mensagem mandada no meio de uma tarefa fica como anexo "queued_command" vindo de pessoa
+      const fila = d.type === 'attachment' && d.attachment?.type === 'queued_command' && (d.attachment.humanTurn || d.attachment.origin?.kind === 'human');
+      if (fila && !d.isSidechain && String(d.attachment.prompt || '').trim()) { ultima = d.uuid || d.attachment.source_uuid; continue; }
+      if (d.type !== 'user' || d.isMeta || d.isSidechain) continue;
+      const c = d.message?.content;
+      const t = typeof c === 'string' ? c : Array.isArray(c) ? c.filter(x => x?.type === 'text').map(x => x.text).join(' ') : '';
+      if (!t.trim() || NAO_E_PESSOA.test(t.trimStart())) continue;
+      ultima = d.uuid || d.promptId || t.slice(0, 80);
+    }
+  } catch {}
+  return ultima;
+}
+const HORAS_PARADO = 6; // laço sem atividade há mais que isso se desliga sozinho
+const MAX_ESPERAS = 6;  // esperas pelo revisor que não gastam rodada; depois disso passam a gastar
+
 async function hook() {
   const entrada = lerJSON0(await lerStdin());
   const raiz = acharRaiz(entrada.cwd || process.cwd());
@@ -182,9 +205,28 @@ async function hook() {
   if (!est || !est.ativo) return;
   if (est.sessao && entrada.session_id && est.sessao !== entrada.session_id) return; // laço de outra sessão
   if (!est.sessao && entrada.session_id) est.sessao = entrada.session_id;
+  // Não prender a sessão: o laço vale para o pedido que o ligou.
+  const ultimoUso = Date.parse(est.ultimaAtividade || est.iniciado || 0);
+  if (ultimoUso && Date.now() - ultimoUso > HORAS_PARADO * 3600e3) {
+    est.ativo = false; est.fim = 'expirou'; est.terminou = new Date().toISOString(); gravarJSON(arq, est);
+    process.stdout.write(JSON.stringify({systemMessage: `toc: laço desligado sozinho (${HORAS_PARADO} h sem atividade).`}));
+    return;
+  }
+  const msg = entrada.transcript_path ? ultimaMensagemDaPessoa(entrada.transcript_path) : null;
+  if (msg) {
+    if (!est.turno) est.turno = msg; // 1ª volta depois de iniciar/retomar: adota o pedido atual
+    else if (est.turno !== msg) {    // a pessoa mandou outra mensagem: pausa em vez de prender a conversa
+      est.ativo = false; est.pausado = true; est.fim = 'nova mensagem'; gravarJSON(arq, est);
+      process.stdout.write(JSON.stringify({systemMessage: 'toc pausado: chegou mensagem nova sua. Se ela continua a mesma entrega, o Claude roda "toc retomar"; senão o laço fica desligado.'}));
+      return;
+    }
+  }
+  est.ultimaAtividade = new Date().toISOString();
   const toc = `"${process.execPath}" "${path.join(AQUI, 'toc.mjs')}"`;
   const bloquear = (motivo, contar = true) => {
+    if (!contar && (est.esperas || 0) >= MAX_ESPERAS) contar = true; // espera sem fim vira rodada: o limite sempre chega
     if (!contar) { // espera de revisor: segura o fim sem gastar rodada
+      est.esperas = (est.esperas || 0) + 1;
       gravarJSON(arq, est);
       process.stdout.write(JSON.stringify({decision: 'block', reason: motivo, systemMessage: `toc: esperando o revisor (rodada ${est.rodada || 0}/${est.max})`}));
       return;
@@ -248,8 +290,8 @@ async function hook() {
         est.reconferencias = (est.reconferencias || 0) + 1;
         const escalar = (ult.pendentes || []).some(p => p.duvida);
         return bloquear(`A conferência mecânica passou (${r.pasta}, impressão ${fp}). Falta CONFIRMAR as ${pac.n} pendência(s) do revisor: reconferência barata, não revisão inteira.\n` +
-          `Chame um subagente (Agent, model "${escalar ? 'sonnet' : 'haiku'}", salvo regra do projeto) com este prompt: ` +
-          `"Você é o reconferente do toc. Leia e siga ${pac.md}. Não edite nada além do veredito." ` +
+          `Chame o Agent com subagent_type "toc-reconferente"${escalar ? ' e model "sonnet"' : ''} (agente enxuto: só ler e gravar; se não existir, use general-purpose com model "${escalar ? 'sonnet' : 'haiku'}") e este prompt: ` +
+          `"Pacote: ${pac.md}" ` +
           `Ele só olha os recortes "antes | agora" de cada pendência e as mudanças fora delas. Não escreva o veredito você mesmo.` +
           (escalar ? ' (A reconferência anterior teve dúvida: por isso sonnet desta vez.)' : '') +
           `\nDepois de chamar, rode ${toc} esperar.`);
@@ -264,8 +306,9 @@ async function hook() {
       `Passe ao revisor a lista do que você mudou e por quê, o veredito anterior (${PASTA.split(path.sep).join('/')}/veredito.json, ele lê antes de sobrescrever)` +
       (mudancas.length ? ` e as folhas de mudanças (${mudancas.join(', ')})` : '') + '; ele não refaz a revisão inteira.' : '';
     return bloquear(`A conferência mecânica passou (${r.pasta}, impressão ${fp}). Falta o olho de fora.\n` +
-      `Chame um subagente revisor (Agent, model "sonnet", salvo regra do projeto) com o roteiro de ${path.join(SKILL, 'referencias', 'revisor.md')}, preenchendo: ` +
-      `contrato ${est.contrato}, relatório ${r.pasta}/relatorio.json, texto extraído ${r.pasta}/texto.md, folhas ${folhas.join(', ')}, impressão ${fp}. ` +
+      `Chame o Agent com subagent_type "toc-revisor" (agente enxuto, Sonnet, só ler e gravar: corta o custo fixo de herdar todas as ferramentas). ` +
+      `Prompt: "raiz ${raiz}; rodada ${r.pasta}; folhas ${folhas.join(', ')}; impressão ${fp}". ` +
+      `Se o agente não existir, use general-purpose com model "sonnet" e o roteiro de ${path.join(SKILL, 'referencias', 'revisor.md')} preenchido com esses caminhos. ` +
       `Ele grava ${PASTA.split(path.sep).join('/')}/veredito.json. Não escreva o veredito você mesmo.` + confirmacao +
       `\nDepois de chamar o revisor, rode ${toc} esperar: marca o revisor como em andamento (terminar enquanto ele trabalha não gasta rodada) e espera o veredito.` +
       (so.length ? `\nItens que só o revisor julga: ${so.join(', ')}.` : ''));
@@ -349,7 +392,7 @@ function principal() {
   }
   if (cmd === 'impressao') { const a = path.resolve(raiz, est.contrato); sair(impressao(raiz, lerContrato(a), a)); }
   if (cmd === 'pausar') { est.ativo = false; est.pausado = true; gravarJSON(arq, est); sair('toc pausado. Retome com: toc.mjs retomar'); }
-  if (cmd === 'retomar') { est.ativo = true; delete est.pausado; delete est.fim; gravarJSON(arq, est); sair(`toc retomado na rodada ${est.rodada}/${est.max}.`); }
+  if (cmd === 'retomar') { est.ativo = true; delete est.pausado; delete est.fim; delete est.turno; est.esperas = 0; est.ultimaAtividade = new Date().toISOString(); gravarJSON(arq, est); sair(`toc retomado na rodada ${est.rodada}/${est.max}.`); }
   if (cmd === 'parar') { est.ativo = false; est.fim = 'parado'; est.terminou = new Date().toISOString(); gravarJSON(arq, est); sair('toc desligado neste projeto. Relatórios ficam em .claude/toc/.'); }
   if (cmd === 'status') {
     const r = est.cache ? lerJSON(path.join(raiz, est.cache.pasta, 'relatorio.json'), null) : null;

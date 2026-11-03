@@ -69,7 +69,13 @@ export function lerContrato(arquivo) {
     if (!TIPOS.has(it.tipo)) throw new Error(`tipo desconhecido em ${it.id}: ${it.tipo} (use ${[...TIPOS].join(', ')})`);
     ids.add(it.id);
   }
-  return {...PADRAO, ...c};
+  const r = {...PADRAO, ...c};
+  // Página com tela de celular e de desktop: o revisor sempre julga se cada uma tem composição própria.
+  const larguras = r.telas.map(t => +String(t).split('x')[0]);
+  if (ehPagina(r) && larguras.some(w => w < 768) && larguras.some(w => w >= 1000) && r.mobileProprio !== false && !r.itens.some(i => i.id === 'CM'))
+    r.itens = [...r.itens, {id: 'CM', tipo: 'revisor', origem: 'regra do toc',
+      descricao: 'celular e desktop têm cada um a sua composição (ordem, tamanhos, o que aparece na primeira tela): o celular não é o desktop espremido e o desktop não é o celular esticado'}];
+  return r;
 }
 
 export function carregarPlaywright(raiz, ...extras) {
@@ -552,7 +558,32 @@ async function sonda(o) {
       if (alta && (s.letterSpacing === 'normal' || parseFloat(s.letterSpacing) === 0) && parseFloat(s.fontSize) < 20 && caixa++ < 3)
         achar('caixa-alta', 'nota', el, 'caixa-alta pequena sem espaçamento entre letras (+0,05 a 0,1em)');
     }
-    return {achados: out};
+    // Sinais para comparar desktop e celular no Node: versão própria de cada um ou desktop espremido?
+    let mediaLayout = 0, folhasFechadas = 0;
+    const MUDA_LAYOUT = /\b(display|grid-template|grid-area|flex-direction|flex-wrap|order|position|visibility|columns|float)\s*:/;
+    const varrer = regras => {
+      for (const r of regras) {
+        try {
+          if ((r instanceof CSSMediaRule && /width|orientation|pointer|hover/.test(r.media.mediaText)) || (typeof CSSContainerRule !== 'undefined' && r instanceof CSSContainerRule))
+            for (const s of r.cssRules) { if (MUDA_LAYOUT.test(s.cssText || '')) mediaLayout++; else if (s.cssRules) varrer(s.cssRules); }
+          else if (r.cssRules) varrer(r.cssRules); // @supports, @layer
+        } catch {}
+      }
+    };
+    for (const sh of document.styleSheets) { try { varrer(sh.cssRules); } catch { folhasFechadas++; } }
+    if (document.querySelector('picture source[media]')) mediaLayout++; // imagem própria para cada tela também conta
+    const espremidas = [];
+    if (vw < 768) for (const pai of todos()) {
+      if (!visivel(pai) || pai.scrollWidth > pai.clientWidth + 4) continue; // carrossel que rola de lado é de propósito
+      const fs3 = [...pai.children].filter(f => visivel(f) && (f.innerText || '').trim().length > 20 && !/absolute|fixed/.test(cs(f).position));
+      if (fs3.length < 2) continue;
+      const rs = fs3.map(f => f.getBoundingClientRect());
+      const lado = rs.filter((r, i) => rs.some((q, j) => j !== i && Math.abs(q.top - r.top) < 8 && (q.left >= r.right - 2 || r.left >= q.right - 2)));
+      if (lado.filter(r => r.width < 150).length >= 2) { espremidas.push({onde: caminho(pai), larg: Math.round(Math.min(...lado.map(r => r.width)))}); if (espremidas.length >= 5) break; }
+    }
+    const ps = [...document.querySelectorAll('p')].filter(p => visivel(p) && (p.innerText || '').trim().length > 40).map(p => parseFloat(cs(p).fontSize)).sort((a, b) => a - b);
+    const h1 = [...document.querySelectorAll('h1')].find(visivel);
+    return {achados: out, sinais: {mediaLayout, folhasFechadas, espremidas, corpoPx: ps.length ? ps[ps.length >> 1] : null, h1Px: h1 ? parseFloat(cs(h1).fontSize) : null}};
   }
 
   if (o.modo === 'itens') {
@@ -804,7 +835,7 @@ export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '
     return rel;
   }
   let blocosWeb = [], squint = null;
-  const mascaras = {};
+  const mascaras = {}, sinais = {};
   const pw = carregarPlaywright(raiz, ...(c.arquivo ? [path.dirname(path.resolve(raiz, c.arquivo))] : []));
   const fotosDir = path.join(saida, 'fotos');
   fs.mkdirSync(fotosDir, {recursive: true});
@@ -911,7 +942,9 @@ export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '
         antes = topo;
         y = topo + passo;
       }
-      add((await page.evaluate(sonda, {modo: 'global', dispensas, escalaEspaco: c.escalaEspaco})).achados);
+      const glob = await page.evaluate(sonda, {modo: 'global', dispensas, escalaEspaco: c.escalaEspaco});
+      add(glob.achados);
+      if (mi === 0 && glob.sinais) sinais[tela.nome] = glob.sinais;
       marca(`${tela.nome} ${mov}: global`);
       if (mi === 0 && ti === 0) {
         add(await conferirFoco(page, dispensas)); marca(`${tela.nome} ${mov}: foco`);
@@ -932,6 +965,18 @@ export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '
   } finally { await browser.close(); }
 
   achados.push(...conferirTexto(blocosWeb, c, saida, 'texto'));
+  // Versão do celular e versão do desktop: cada uma com a sua composição, não uma adaptada da outra.
+  const sDesk = telas.filter(t => t.width >= 1000).map(t => sinais[t.nome]).find(Boolean);
+  const telaCel = telas.find(t => t.width < 768), sCel = telaCel && sinais[telaCel.nome];
+  if (sDesk && sCel && c.mobileProprio !== false) {
+    const ac = (regra, gravidade, onde, detalhe) => achados.push({regra, gravidade, onde, detalhe, tela: 'celular x desktop', movimento: 'normal', porDetalhe: true});
+    if (!sCel.mediaLayout && !sCel.folhasFechadas)
+      ac('mobile-sem-versao', 'corrigir', '', 'nenhuma regra @media muda o layout (grid, flex, ordem, o que aparece): o celular é o desktop encolhido. Desenhe a composição própria do celular: ordem, tamanhos e o que entra na primeira tela');
+    for (const e of sCel.espremidas) ac('mobile-colunas-espremidas', 'corrigir', e.onde, `colunas de texto lado a lado com ${e.larg}px no celular (${telaCel.nome}): empilhe ou reorganize para o celular`);
+    if (sCel.corpoPx && sCel.corpoPx < 14) ac('mobile-letra-pequena', 'corrigir', '', `texto corrido com ${sCel.corpoPx}px no celular: mínimo 14px, ideal 16px`);
+    if (sDesk.h1Px >= 40 && sCel.h1Px && Math.abs(sDesk.h1Px - sCel.h1Px) / sDesk.h1Px < 0.05)
+      ac('mobile-titulo-igual', 'nota', 'h1', `o título principal tem ${sCel.h1Px}px no celular e no desktop: o tamanho não foi pensado para cada tela`);
+  }
   fs.writeFileSync(path.join(saida, 'mascaras.json'), JSON.stringify(mascaras));
   if (squint) fs.writeFileSync(path.join(saida, 'squint.json'), JSON.stringify(squint));
   const vis = visao(saida, anterior);

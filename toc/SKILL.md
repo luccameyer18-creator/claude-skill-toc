@@ -55,6 +55,9 @@ E tem botão de desligar: limite de rodadas e relatório honesto do que ficou ab
 - **Precisa do usuário?** `toc pausar`, pergunte, `toc retomar`. Usuário mandou parar: `toc parar`.
 - **Página atrás de login ou senha** (loja fechada, painel): a conferência percebe que caiu na tela de login, para e marca os itens como não conferidos. Rode `toc login URL` em segundo plano e peça ao usuário para entrar na janela e fechá-la; a sessão fica em `.claude/toc/sessao.json` e as próximas conferências entram logadas. Você nunca digita senha ou código.
 - **Fonte, tamanho, cor:** afirme pela ficha tipográfica do `texto.md` (valores calculados), não pela foto.
+- **O laço vale para o pedido que o ligou.** Quando o usuário manda mensagem nova, o hook pausa sozinho em vez de prender a conversa. Se a mensagem continua a mesma entrega ("ajusta o botão"), rode `toc retomar`; se é outro assunto, deixe desligado. "Para o toc" → `toc parar`. Sem atividade por 6 h o laço desliga sozinho, e esperar o revisor sem gastar rodada tem limite.
+- **Página: duas versões.** Desenhe a composição do desktop e a do celular, cada uma com decisões próprias (ordem, tamanhos, o que entra na primeira tela, o que some). Nunca entregue o desktop encolhido. O contrato confere as duas telas, a conferência acusa celular sem `@media`, colunas espremidas e letra pequena, e o revisor sempre julga o item CM.
+- **Gaste pouco.** Leia o `resumo.md`, não o `relatorio.json`; abra só as folhas que mudaram; chame os agentes enxutos `toc-revisor` e `toc-reconferente` (só ler e gravar), que não carregam todas as ferramentas e MCPs a cada chamada.
 - **Tempo.** Documento: 10 a 30 s por conferência (Word e Excel abrem em instância própria). Página: 1 a 3 min. Se a página depende de servidor, deixe-o rodando.
 - Aprovação é do usuário. O laço fechar quer dizer "o combinado foi conferido", não "ficou perfeito".
 
