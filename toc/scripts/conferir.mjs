@@ -11,8 +11,10 @@ import {execSync, spawnSync} from 'node:child_process';
 import {lintar, textoMd} from './slop.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
-const TIPOS = new Set(['existe', 'texto', 'semTexto', 'visivelSemRolar', 'css', 'contraste', 'js', 'revisor', 'contagem', 'celula', 'estrutura']);
-export const ehPagina = c => !!c.url || /\.html?$/i.test(c.arquivo || '');
+const TIPOS = new Set(['existe', 'texto', 'semTexto', 'visivelSemRolar', 'css', 'contraste', 'js', 'revisor', 'contagem', 'celula', 'estrutura',
+  'batida', 'momento', 'vozSobreMusica', 'fala', 'legenda', 'volume', 'duracao', 'formato']);
+export const ehVideo = c => !!c.composicao || /\.(mp4|mov|webm|mkv|m4v)$/i.test(c.arquivo || '');
+export const ehPagina = c => !ehVideo(c) && (!!c.url || /\.html?$/i.test(c.arquivo || ''));
 const python = (args, timeout = 420000) => spawnSync(process.env.TOC_PYTHON || 'python', ['-I', path.join(AQUI, 'doc.py'), ...args], {encoding: 'utf8', timeout, maxBuffer: 1 << 26});
 const lerJSONseguro = arq => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return null; } };
 // dispensa vale por regra ("texto" cobre todas as texto-*), trecho do "onde" (seletor) e trecho do detalhe (contem)
@@ -59,7 +61,7 @@ export function lerContrato(arquivo) {
   const c = JSON.parse(fs.readFileSync(arquivo, 'utf8'));
   const faltam = [];
   if (!c.pedido) faltam.push('pedido');
-  if (!c.url && !c.arquivo) faltam.push('url ou arquivo');
+  if (!c.url && !c.arquivo && !c.composicao) faltam.push('url, arquivo ou composicao');
   if (!Array.isArray(c.itens) || !c.itens.length) faltam.push('itens');
   if (faltam.length) throw new Error('contrato sem: ' + faltam.join(', '));
   const ids = new Set();
@@ -821,10 +823,31 @@ export async function login({url, raiz = process.cwd(), arquivo, headless = fals
   return {destino, salvas};
 }
 
+// Vídeo: video.py confere o plano (composição HyperFrames) sem render e mede o arquivo final quando ele existe.
+async function conferirVideo({c, contratoArq, raiz, saida, fp}) {
+  fs.mkdirSync(saida, {recursive: true});
+  // -E -P em vez de -I: as bibliotecas de áudio costumam estar no site do usuário, e -P já impede módulo plantado na pasta atual
+  const r = spawnSync(process.env.TOC_PYTHON || 'python', ['-E', '-P', path.join(AQUI, 'video.py'), contratoArq, raiz, saida], {encoding: 'utf8', timeout: 420000, maxBuffer: 1 << 26});
+  const v = lerJSONseguro(path.join(saida, 'video.json'));
+  if (!v) throw new Error('o conferidor de vídeo (video.py) não rodou: ' + String(r.error?.message || r.stderr || r.stdout || '').slice(-600));
+  const achados = v.achados.map(a => ({...a, tela: 'vídeo', movimento: 'normal'}));
+  for (const av of v.avisos) achados.push({regra: 'nao-conferido', gravidade: 'nota', onde: '', detalhe: av, porDetalhe: true, tela: 'vídeo'});
+  if (v.blocos.length) achados.push(...conferirTexto(v.blocos, c, saida, 'vídeo'));
+  else fs.writeFileSync(path.join(saida, 'texto.md'), '# Texto\n\nsem legendas nem fala transcrita\n');
+  fs.appendFileSync(path.join(saida, 'texto.md'), '\n## Medidas do vídeo\n\n```json\n' + JSON.stringify(v.medidas, null, 1) + '\n```\n');
+  const itensRes = c.itens.map(it => {
+    const x = v.itens[it.id] || {ok: false, detalhe: 'não conferido', conferido: true};
+    return {id: it.id, descricao: it.descricao || '', tipo: it.tipo, origem: it.origem || 'pedido', conferido: x.conferido, ok: x.ok, detalhe: x.detalhe,
+      falhas: x.conferido && !x.ok ? [x.detalhe] : []};
+  });
+  return fechar({c, contratoArq, raiz, saida, fp, url: c.arquivo || c.composicao, achados, itensRes, fotos: {}, folhas: v.folhas,
+    combinacoes: [v.temFinal ? 'vídeo final' : 'só o plano'], tipo: 'video', avisos: v.avisos});
+}
+
 export async function conferir({contratoArq, raiz = process.cwd(), saida, fp = '', anterior = ''}) {
   const c = lerContrato(contratoArq);
   if (!ehPagina(c)) {
-    const rel = await conferirDocumento({c, contratoArq, raiz, saida, fp});
+    const rel = ehVideo(c) ? await conferirVideo({c, contratoArq, raiz, saida, fp}) : await conferirDocumento({c, contratoArq, raiz, saida, fp});
     if (!anterior) return rel;
     const vis = visao(saida, anterior);
     if (!vis.achados.length && !vis.folhas.length) return rel;

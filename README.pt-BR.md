@@ -100,6 +100,15 @@ Sinais de página gerada e acabamento, com ideias do [Impeccable](https://github
 </details>
 
 <details>
+<summary><b>Vídeo (plano HyperFrames + arquivo renderizado)</b></summary>
+
+- **Antes do render:** lê a composição e confere o tempo contra a música: clipes que deviam cair na batida, um momento pedido ("o HEAD explode no 'head' da música, 1:17.367"), cada fala contra a música na faixa da voz (pelas faixas separadas, sem separar fonte) e legendas contra o ataque real da voz. Pega erro de tempo em um ou dois minutos, antes de gastar um render inteiro.
+- **Depois do render:** volume e pico real, tela preta, imagem parada, silêncio, áudio e imagem com durações diferentes, cortes dentro ou fora da batida, o quadro em que a imagem muda de verdade perto de cada momento pedido e se o Whisper ainda entende a voz na mixagem final, comparado com a voz limpa.
+- **Para o revisor:** uma "partitura" por 15 s (batidas, plano, cortes, momentos, dB da voz, palavras, legendas; o que está fora em vermelho) e quadros tirados nos momentos pedidos.
+- Não dá nota de "quanto a voz parece IA": os detectores abertos ainda não são confiáveis. Nota de naturalidade (UTMOS) está na lista.
+</details>
+
+<details>
 <summary><b>Texto, em tudo</b></summary>
 
 Erro bobo (texto de modelo esquecido, palavra repetida, vírgula colada, formatos de número e data misturados, nome escrito de dois jeitos), ortografia pelo dicionário do próprio Word e padrões de texto de IA em português e inglês: "não é só X, mas Y", "vale ressaltar", "estudos mostram" sem fonte, fecho com "em suma", mania de travessão, botão "Saiba mais". Ele nomeia o padrão e cita o trecho. Nunca dá nota de "cara de IA".
@@ -109,6 +118,7 @@ Erro bobo (texto de modelo esquecido, palavra repetida, vírgula colada, formato
 
 - Node 18+
 - Página web: Playwright no projeto (`npm i -D playwright`) e Chrome
+- Vídeo: ffmpeg e `pip install librosa faster-whisper opencv-python pillow` (o Whisper `small` baixa uma vez; `TOC_WHISPER=base` usa um menor)
 - Documentos: Python 3 com `pip install python-docx python-pptx openpyxl pymupdf pillow`
 - Opcional, Windows com Office: `pip install pywin32` para corretor do Word, páginas renderizadas e cálculo no Excel. Sem isso, essas partes aparecem como `nao-conferido` no relatório, em vez de passarem caladas.
 

@@ -1,6 +1,6 @@
 ---
 name: toc
-description: TOC (Transtorno Obsessivo-Compulsivo) / OCD for your agent. Não deixa o Claude dizer "pronto" com erro bobo na entrega. Transforma o pedido num contrato, confere a coisa de verdade (página web em 3 telas, Word, PowerPoint, Excel, CSV, PDF, Markdown: contraste, texto cortado, fórmula com erro, soma que pula linha, ortografia, padrões de texto de IA, sobra de ferramenta) e um hook de Stop segura o Claude até contrato, scripts e um revisor de fora fecharem, com limite de rodadas. Use quando o usuário pedir "modo toc", "/toc", "não para até ficar perfeito", "revisa nos mínimos detalhes", "não deixa passar erro bobo", "OCD mode", "don't stop until it's perfect". Não use em toda tarefa: cada rodada custa de segundos a minutos.
+description: TOC (Transtorno Obsessivo-Compulsivo) / OCD for your agent. Não deixa o Claude dizer "pronto" com erro bobo na entrega. Transforma o pedido num contrato, confere a coisa de verdade (página web em 3 telas, Word, PowerPoint, Excel, CSV, PDF, Markdown: contraste, texto cortado, fórmula com erro, soma que pula linha, ortografia, padrões de texto de IA, sobra de ferramenta; vídeo: batida, momentos pedidos, voz contra música, fala que some na mixagem, legenda fora do tempo, volume) e um hook de Stop segura o Claude até contrato, scripts e um revisor de fora fecharem, com limite de rodadas. Use quando o usuário pedir "modo toc", "/toc", "não para até ficar perfeito", "revisa nos mínimos detalhes", "não deixa passar erro bobo", "OCD mode", "don't stop until it's perfect". Não use em toda tarefa: cada rodada custa de segundos a minutos.
 ---
 
 # toc
@@ -21,7 +21,7 @@ E tem botão de desligar: limite de rodadas e relatório honesto do que ficou ab
 | Peça | Onde | Papel |
 |---|---|---|
 | Contrato | `.claude/toc/contrato.json` no projeto | define o que "pronto" quer dizer. Formato: `referencias/contrato.md` |
-| Conferência | `scripts/conferir.mjs` (página, Playwright) e `scripts/doc.py` (documentos) | olho mecânico. Lista em `referencias/minucias.md` |
+| Conferência | `scripts/conferir.mjs` (página, Playwright), `scripts/doc.py` (documentos) e `scripts/video.py` (vídeo: plano HyperFrames e arquivo final) | olho mecânico. Lista em `referencias/minucias.md` |
 | Texto | `scripts/slop.mjs` + corretor do Word | erros bobos e padrões de texto de IA. Conserto: `referencias/texto.md` |
 | Revisor | subagente | olho de fora sobre fotos e texto. Roteiro: `referencias/revisor.md` |
 | Trava | hook Stop → `toc hook` | ao tentar terminar, confere; se faltar algo, devolve a lista e o Claude continua |
@@ -57,6 +57,7 @@ E tem botão de desligar: limite de rodadas e relatório honesto do que ficou ab
 - **Página atrás de login ou senha** (loja fechada, painel): a conferência percebe que caiu na tela de login, para e marca os itens como não conferidos. Rode `toc login URL` em segundo plano e peça ao usuário para entrar na janela e fechá-la; a sessão fica em `.claude/toc/sessao.json` e as próximas conferências entram logadas. Você nunca digita senha ou código.
 - **Fonte, tamanho, cor:** afirme pela ficha tipográfica do `texto.md` (valores calculados), não pela foto.
 - **O laço vale para o pedido que o ligou.** Quando o usuário manda mensagem nova, o hook pausa sozinho em vez de prender a conversa. Se a mensagem continua a mesma entrega ("ajusta o botão"), rode `toc retomar`; se é outro assunto, deixe desligado. "Para o toc" → `toc parar`. Sem atividade por 6 h o laço desliga sozinho, e esperar o revisor sem gastar rodada tem limite.
+- **Vídeo: plano antes do render.** Escreva o contrato com `composicao` e `arquivo` (pode não existir ainda) e, antes de renderizar, rode `toc conferir`: sem o render ele confere só o plano (1 a 2 min) e acusa clipe fora da batida, momento fora do tempo, voz baixa e legenda atrasada. Renderize quando o plano fechar; aí o hook mede o arquivo final. Pedido com tempo ("na batida", "no 'head' da música em 1:17") vira número no contrato (`bpm`, `musicaEm`, `tolMs`). Abra a partitura e a folha de quadros da rodada.
 - **Página: duas versões.** Desenhe a composição do desktop e a do celular, cada uma com decisões próprias (ordem, tamanhos, o que entra na primeira tela, o que some). Nunca entregue o desktop encolhido. O contrato confere as duas telas, a conferência acusa celular sem `@media`, colunas espremidas e letra pequena, e o revisor sempre julga o item CM.
 - **Gaste pouco.** Leia o `resumo.md`, não o `relatorio.json`; abra só as folhas que mudaram; chame os agentes enxutos `toc-revisor` e `toc-reconferente` (só ler e gravar), que não carregam todas as ferramentas e MCPs a cada chamada.
 - **Tempo.** Documento: 10 a 30 s por conferência (Word e Excel abrem em instância própria). Página: 1 a 3 min. Se a página depende de servidor, deixe-o rodando.
@@ -73,6 +74,7 @@ E tem botão de desligar: limite de rodadas e relatório honesto do que ficou ab
 ## Requisitos e instalação
 
 - Node 18+. Página: Playwright alcançável a partir do projeto (`npm i -D playwright`) e Chrome instalado (ou caminho em `TOC_CHROME`).
+- Vídeo: ffmpeg no PATH e Python com `librosa faster-whisper opencv-python pillow` (o modelo `small` do Whisper baixa uma vez; `TOC_WHISPER=base` usa um menor).
 - Documentos: Python 3 com `python-docx python-pptx openpyxl pymupdf pillow` (Python em `TOC_PYTHON` se não for `python`). No Windows com Office e `pywin32`: corretor do Word, páginas do docx em PDF e cálculo das fórmulas no Excel. Sem eles, essas partes viram aviso. O PowerPoint nunca é aberto.
 - Hook Stop no `settings.json` do Claude Code (ver README do repositório). Ele só age em projeto com `.claude/toc/estado.json` ativo e na sessão que ligou o laço.
 

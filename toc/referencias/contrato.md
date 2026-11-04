@@ -33,6 +33,18 @@ O contrato diz o que "pronto" quer dizer **para este pedido**. Nada que o usuár
 | `antes` | comando que roda (e termina) antes de cada conferência, a partir da raiz: build, cópia, geração. Falhou, a conferência não roda e o hook mostra o erro. Servidor que precisa reiniciar depois do build não cabe aqui: use o modo dev (recarrega sozinho) ou um servidor estático que releia a pasta |
 | `antesTimeoutMs` | limite do `antes` (padrão 600000). O hook do Claude Code tem 600 s no total: build longo + conferência pode estourar |
 
+## Só para vídeo
+
+| Campo | O que é |
+|---|---|
+| `arquivo` | o vídeo renderizado (`.mp4`, `.mov`, `.webm`). Pode não existir ainda: aí só o plano é conferido |
+| `composicao` | pasta (ou `index.html`) da composição HyperFrames. Dela saem o plano (quando cada clipe entra), as faixas de voz e a música separadas |
+| `musica` | `bpm` (deixa a grade de batidas exata), `inicio` (tempo da música no segundo 0 do vídeo, para `musicaEm`), `batidaEm` (tempo da música em que cai uma batida, se a detecção travar no contratempo), `seletor` (id da faixa de música na composição) ou `arquivo` + `em` (música fora da composição) |
+| `voz` | `seletor`: regex dos ids ou arquivos de voz na composição (padrão `voz`, `voice`, `narr`, `fala`) |
+| `estilo.idioma` | idioma da fala para o Whisper (`en`, `pt-BR`) |
+
+**Plano antes do render.** Sem `arquivo` renderizado, a conferência lê só a composição: batidas, momentos (pelo `seletor`), voz contra música e legendas contra a fala. Leva 1 a 2 minutos e pega erro de tempo antes de gastar um render. Itens que precisam do arquivo final (volume, formato, fala na mixagem) falham com "falta o render", então o laço não fecha sem ele.
+
 Projeto fora da pasta da sessão: o contrato fica na raiz da sessão (é lá que o hook procura) e `observar` leva caminhos absolutos da pasta do projeto.
 
 ## Tipos de item
@@ -60,6 +72,21 @@ Todo item tem `id` (C1, C2…), `tipo`, `descricao` e `origem` (`pedido` ou `reg
 | `contagem` | `o` (`paginas`, `slides`, `abas`, `palavras`, `imagens`, `titulos`, `linhas`) + `igual` / `min` / `max` | a contagem bate |
 | `estrutura` | `lista` de títulos, `modo` (`contem` ou `ordem`) | os títulos (seções, títulos de slide, nomes de aba) estão lá |
 | `celula` | `ref` ("Aba!B7"), `igual` / `contem` / `entre`, `formula: true` | a célula tem o valor (calculado no Excel) e não está com erro |
+
+**Vídeo**:
+
+| tipo | campos | passa quando |
+|---|---|---|
+| `batida` | `seletor` (regex de id ou classe dos clipes) e/ou `eventos: "cortes"`, `tolMs` (50), `grade` (1 = batida, 0.5 = meia, 4 = compasso), `minFracao`, `ajuste` (s somados ao início do clipe), `de`/`ate` | os clipes do plano (e os cortes medidos no vídeo) caem na grade |
+| `momento` | `em` (s do vídeo) ou `musicaEm` (s da música, com `musica.inicio`), `seletor`, `ajuste`, `tolMs` (80), `janela` (0.5) | o clipe está no tempo no plano e a imagem muda nesse instante no vídeo final |
+| `vozSobreMusica` | `minDb` (10) | em cada fala, a voz fica pelo menos isso acima da música na faixa da fala (300 a 4000 Hz), medido nas faixas separadas |
+| `fala` | `min` (0.85) | o Whisper reconhece na mixagem final essa fração das palavras que reconhece na voz limpa |
+| `legenda` | `seletor` (padrão: ids ou classes `cap`, `legenda`, `caption`), `tolMs` (250) | cada legenda entra no ataque da palavra falada |
+| `volume` | `lufs` (-14), `tol` (1), `picoMax` (-1) | volume integrado e pico real do arquivo final |
+| `duracao` | `igual` (+`tol`), `min`, `max` | duração em segundos |
+| `formato` | `largura`, `altura`, `fps` | o arquivo final tem esse formato |
+
+Sempre conferido no vídeo final, sem item: sem áudio, áudio e imagem com durações diferentes, tela preta no meio, imagem parada por mais de 2 s, silêncio no meio, pico acima de -1 dBTP, duas vozes falando ao mesmo tempo.
 
 **Qualquer entrega**: `revisor` — o revisor julga nas fotos e no texto e diz por quê. Use para o que não tem número ("tom direto", "o celular tem composição própria").
 
@@ -94,6 +121,28 @@ Proposta em Word:
     {"id": "C2", "tipo": "contagem", "o": "paginas", "max": 2, "descricao": "até 2 páginas"},
     {"id": "C3", "tipo": "texto", "contem": "R$ 4.500", "descricao": "valor combinado"},
     {"id": "C4", "tipo": "revisor", "descricao": "tom direto, sem jargão"}
+  ]
+}
+```
+
+Vídeo (Reels com música, HyperFrames):
+
+```json
+{
+  "pedido": "Reels: cartões entram na batida, o HEAD explode no 'head' da música (1:17.367), vozes não podem ficar baixas",
+  "arquivo": "saida/reels.mp4",
+  "composicao": ".",
+  "musica": {"bpm": 129.2, "inicio": 53.522},
+  "estilo": {"idioma": "en"},
+  "itens": [
+    {"id": "C1", "tipo": "batida", "seletor": "^fx[0-9]|^f-", "descricao": "cartões e frases na batida"},
+    {"id": "C2", "tipo": "momento", "seletor": "^head0$", "ajuste": 0.12, "musicaEm": 77.367, "tolMs": 100, "descricao": "HEAD no 'head' da música"},
+    {"id": "C3", "tipo": "vozSobreMusica", "minDb": 10, "descricao": "vozes acima da música"},
+    {"id": "C4", "tipo": "fala", "descricao": "dá para entender a fala"},
+    {"id": "C5", "tipo": "legenda", "descricao": "legendas no tempo da fala"},
+    {"id": "C6", "tipo": "volume", "descricao": "volume de rede social"},
+    {"id": "C7", "tipo": "formato", "largura": 1080, "altura": 1920, "fps": 30, "descricao": "vertical"},
+    {"id": "C8", "tipo": "revisor", "descricao": "fica claro que são erros sendo corrigidos"}
   ]
 }
 ```

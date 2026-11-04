@@ -8,7 +8,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-24292f?style=flat" alt="MIT" /></a>
   &nbsp;<img src="https://img.shields.io/badge/Claude%20Code-skill-d97757?style=flat" alt="Claude Code skill" />
-  &nbsp;<img src="https://img.shields.io/badge/checks-web%20·%20docx%20·%20pptx%20·%20xlsx%20·%20pdf-24292f?style=flat" alt="checks" />
+  &nbsp;<img src="https://img.shields.io/badge/checks-web%20·%20docx%20·%20pptx%20·%20xlsx%20·%20pdf%20·%20video-24292f?style=flat" alt="checks" />
   &nbsp;<a href="README.pt-BR.md"><img src="https://img.shields.io/badge/leia%20em-português-009c3b?style=flat" alt="Leia em português" /></a>
 </p>
 
@@ -100,6 +100,15 @@ Tells and polish, inspired by [Impeccable](https://github.com/pbakaus/impeccable
 </details>
 
 <details>
+<summary><b>Video (HyperFrames plan + rendered file)</b></summary>
+
+- **Before rendering:** reads the composition and checks timing against the music: clips that should land on the beat, a moment you asked for ("the HEAD hits on the word 'head', 1:17.367"), each voice line against the music in the speech band (from the separate stems, no source separation needed), captions against the actual voice attack. Catches timing mistakes in a minute or two instead of after a full render.
+- **After rendering:** loudness and true peak, black frames, frozen image, silence, audio and video of different lengths, cuts on or off the beat, the frame where the image actually changes near each requested moment, and whether Whisper can still make out the voice in the final mix compared with the clean voice.
+- **For the reviewer:** a "score sheet" image per 15 s (beats, plan, cuts, moments, voice dB, words, captions; anything off in red) and frames taken at the requested moments.
+- It doesn't score "how AI the voice sounds": open-source detectors are unreliable today. Naturalness scoring (UTMOS) is on the list.
+</details>
+
+<details>
 <summary><b>Text, everywhere</b></summary>
 
 Silly mistakes (leftover placeholders, doubled words, glued commas, mixed number and date formats, a name spelled two ways), spelling via Word's own dictionary, and AI writing tells in English and Portuguese: "not just X, but Y", "it's worth noting", "studies show" with no source, recap endings, em-dash habits, generic button labels. It names the pattern and quotes the line. It never scores "how AI it sounds".
@@ -109,6 +118,7 @@ Silly mistakes (leftover placeholders, doubled words, glued commas, mixed number
 
 - Node 18+
 - Web pages: Playwright in the project (`npm i -D playwright`) and Chrome
+- Video: ffmpeg and `pip install librosa faster-whisper opencv-python pillow` (Whisper `small` downloads once; `TOC_WHISPER=base` for a smaller one)
 - Documents: Python 3 with `pip install python-docx python-pptx openpyxl pymupdf pillow`
 - Optional, Windows with Office: `pip install pywin32` for Word's spell checker, real page renders and Excel recalculation. Without it, those parts show up as `nao-conferido` in the report instead of silently passing.
 

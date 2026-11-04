@@ -56,5 +56,9 @@ const r = spawnSync(py, ['-c', `import importlib\nfor m in ${JSON.stringify(mods
 if (r.error) console.log(`! Python não encontrado: documentos ficam de fora (instale Python 3 ou aponte TOC_PYTHON)`);
 else if (r.stdout.trim()) console.log(`! para documentos: pip install python-docx python-pptx openpyxl pymupdf pillow`);
 else console.log('✓ Python pronto para docx, pptx, xlsx, pdf');
+const rv = spawnSync(py, ['-E', '-P', '-c', `import importlib\nfor m in ['librosa', 'faster_whisper', 'cv2', 'PIL']:\n  try: importlib.import_module(m)\n  except Exception: print(m)`], {encoding: 'utf8'});
+const ff = spawnSync('ffmpeg', ['-version'], {encoding: 'utf8'});
+const faltaVideo = [ff.error ? 'ffmpeg no PATH' : '', rv.error || rv.stdout.trim() ? 'pip install librosa faster-whisper opencv-python pillow' : ''].filter(Boolean);
+console.log(faltaVideo.length ? `! para vídeo: ${faltaVideo.join('; ')}` : '✓ Python e ffmpeg prontos para vídeo');
 console.log('! para páginas web: npm i -D playwright no projeto, com o Chrome instalado');
 console.log('\nPronto. Abra uma sessão nova do Claude Code e peça: "modo toc: ..."');

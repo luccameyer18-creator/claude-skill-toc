@@ -49,7 +49,9 @@ export function impressao(raiz, contrato, contratoArq) {
       try { const s = fs.statSync(p); h.update(`${rel(raiz, p)}|${s.size}|${Math.round(s.mtimeMs)}\n`); n++; } catch {}
     }
   };
-  const alvos = contrato.observar?.length ? contrato.observar : (contrato.arquivo && !/\.html?$/i.test(contrato.arquivo) ? [contrato.arquivo] : ['.']);
+  const alvos = contrato.observar?.length ? contrato.observar
+    : contrato.composicao ? [contrato.composicao, contrato.arquivo].filter(Boolean) // vídeo: o plano e o render
+    : (contrato.arquivo && !/\.html?$/i.test(contrato.arquivo) ? [contrato.arquivo] : ['.']);
   for (const o of alvos) {
     const p = path.resolve(raiz, o);
     let s; try { s = fs.statSync(p); } catch { continue; }
