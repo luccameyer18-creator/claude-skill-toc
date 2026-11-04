@@ -3,6 +3,8 @@
 // Uso: node toc.mjs iniciar [--contrato .claude/toc/contrato.json] [--max 8]
 //      node toc.mjs conferir | status | pausar | retomar | parar | impressao
 //      node toc.mjs esperar [--max-s 600]   (marca o revisor como em andamento e espera o veredito)
+//      node toc.mjs liberar <arquivo|contrato:ID> --motivo "..."   (só com o sim do usuário)
+//      node toc.mjs restaurar   (volta os testes travados ao que eram quando o laço ligou)
 //      node toc.mjs hook        (hook Stop do Claude Code; lê o JSON do stdin)
 // Estado em <projeto>/.claude/toc/estado.json, achado subindo a partir da pasta atual.
 // Sem esse arquivo (ou com ativo=false) o hook não faz nada.
@@ -56,6 +58,71 @@ export function impressao(raiz, contrato, contratoArq) {
   h.update(fs.readFileSync(contratoArq));
   return h.digest('hex').slice(0, 12);
 }
+
+// Trava: o que confere a entrega fica como estava quando o laço ligou. Mudar o teste para passar
+// (ou afrouxar item, baixar a nota mínima, trocar o "antes") é o atalho mais comum de quem se revisa sozinho.
+const TRAVA_PADRAO = ['**/*.test.*', '**/*.spec.*', '**/test/**', '**/tests/**', '**/__tests__/**', '**/test_*.py', '**/*_test.py', '**/*_test.go', '**/conftest.py'];
+const TRAVA_COPIA_MAX = 5 * 1024 * 1024; // acima disso guarda só o hash (não dá para restaurar)
+const globRe = g => new RegExp('^' + g.split(/(\*\*\/|\*\*|\*|\?)/).map(p => p === '**/' ? '(?:.*/)?' : p === '**' ? '.*' : p === '*' ? '[^/]*' : p === '?' ? '[^/]' : p.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('') + '$', 'i');
+const padroesTrava = contrato => (Array.isArray(contrato.travados) ? contrato.travados : TRAVA_PADRAO);
+// Raízes onde procurar: o projeto e as pastas de `observar` que ficam fora dele.
+const raizesTrava = (raiz, contrato) => [raiz, ...(contrato.observar || []).map(o => path.resolve(raiz, o)).filter(p => path.isAbsolute(p) && rel(raiz, p).startsWith('..'))];
+
+export function fotoTrava(raiz, contrato) {
+  const res = padroesTrava(contrato).map(globRe), arqs = {};
+  let n = 0;
+  const andar = (base, d) => {
+    let ents; try { ents = fs.readdirSync(d, {withFileTypes: true}); } catch { return; }
+    for (const e of ents) {
+      if (n > 30000 || e.isSymbolicLink() || e.name.startsWith('.')) continue;
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) { if (!PULAR.has(e.name)) andar(base, p); continue; }
+      n++;
+      const r = rel(base, p);
+      if (res.some(re => re.test(r))) arqs[rel(raiz, p)] = hashArq(p);
+    }
+  };
+  for (const b of raizesTrava(raiz, contrato)) if (fs.existsSync(b)) andar(b, b);
+  // O contrato também: item que some ou muda, nota mínima e comando "antes".
+  for (const it of contrato.itens || []) arqs[`contrato:${it.id}`] = JSON.stringify(it);
+  arqs['contrato:notaMinima'] = String(contrato.notaMinima ?? 80);
+  arqs['contrato:antes'] = contrato.antes || '';
+  return arqs;
+}
+
+function travar(raiz, contrato) {
+  const arquivos = fotoTrava(raiz, contrato);
+  const copias = path.join(raiz, PASTA, 'trava');
+  fs.rmSync(copias, {recursive: true, force: true});
+  fs.mkdirSync(copias, {recursive: true});
+  for (const [r, h] of Object.entries(arquivos)) {
+    if (r.startsWith('contrato:') || !h) continue;
+    const p = path.resolve(raiz, r);
+    try { if (fs.statSync(p).size <= TRAVA_COPIA_MAX) fs.copyFileSync(p, path.join(copias, h)); } catch {}
+  }
+  return {arquivos, liberados: {}, dispensas: (contrato.dispensas || []).map(d => JSON.stringify(d))};
+}
+
+// O que mudou na trava desde que o laço ligou, tirando o que o usuário liberou.
+function mexidosNaTrava(raiz, est, contrato) {
+  const t = est.trava;
+  if (!t) return {mexidos: [], novos: []};
+  const agora = fotoTrava(raiz, contrato), mexidos = [], novos = [];
+  for (const [r, h] of Object.entries(t.arquivos)) {
+    if (t.liberados?.[r]) continue;
+    if (!(r in agora)) mexidos.push({r, como: r.startsWith('contrato:') ? 'item removido' : 'apagado'});
+    else if (agora[r] !== h) mexidos.push({r, como: 'alterado'});
+  }
+  for (const r of Object.keys(agora)) if (!(r in t.arquivos) && !r.startsWith('contrato:')) novos.push(r);
+  return {mexidos, novos};
+}
+
+const avisoLiberados = est => {
+  const l = Object.entries(est.trava?.liberados || {});
+  const d = est.trava?.dispensasNovas || [];
+  return (l.length ? ` Liberados no laço: ${l.map(([r, x]) => `${r} (${x.motivo})`).join('; ')}.` : '') +
+    (d.length ? ` Dispensas criadas no laço: ${d.join('; ')}.` : '');
+};
 
 // Contrato com "antes": roda o comando (ex.: build) e espera terminar; se falhar, a conferência nem começa.
 function rodarAntes(raiz, contrato) {
@@ -223,7 +290,7 @@ async function hook() {
   }
   est.ultimaAtividade = new Date().toISOString();
   const toc = `"${process.execPath}" "${path.join(AQUI, 'toc.mjs')}"`;
-  const bloquear = (motivo, contar = true) => {
+  const bloquear = (motivo, contar = true, aviso = '') => {
     if (!contar && (est.esperas || 0) >= MAX_ESPERAS) contar = true; // espera sem fim vira rodada: o limite sempre chega
     if (!contar) { // espera de revisor: segura o fim sem gastar rodada
       est.esperas = (est.esperas || 0) + 1;
@@ -237,18 +304,32 @@ async function hook() {
     const cab = ultima
       ? `toc, ÚLTIMA rodada (${est.rodada}/${est.max}). Corrija o que der e termine com o relatório honesto: o que fechou, o que ficou aberto, as dispensas. Não diga que ficou perfeito.\n`
       : `toc, rodada ${est.rodada}/${est.max}.\n`;
-    process.stdout.write(JSON.stringify({decision: 'block', reason: cab + motivo, systemMessage: `toc: rodada ${est.rodada}/${est.max}`}));
+    process.stdout.write(JSON.stringify({decision: 'block', reason: cab + motivo, systemMessage: `toc: rodada ${est.rodada}/${est.max}${aviso ? ' · ' + aviso : ''}`}));
   };
   if (est.rodada >= est.max) {
     est.ativo = false; est.fim = 'limite'; est.terminou = new Date().toISOString();
     gravarJSON(arq, est);
-    process.stdout.write(JSON.stringify({systemMessage: `toc: limite de ${est.max} rodadas. Pendências em ${est.cache?.pasta || PASTA}/resumo.md`}));
+    process.stdout.write(JSON.stringify({systemMessage: `toc: limite de ${est.max} rodadas. Pendências em ${est.cache?.pasta || PASTA}/resumo.md.${avisoLiberados(est)}`}));
     return;
   }
   let contrato;
   const contratoArq = path.resolve(raiz, est.contrato);
   try { contrato = lerContrato(contratoArq); }
   catch (e) { return bloquear(`O contrato ${est.contrato} não abre: ${e.message}. Corrija o arquivo (formato em ${rel(raiz, path.join(SKILL, 'referencias', 'contrato.md'))}) antes de terminar.`); }
+
+  if (est.trava) {
+    est.trava.dispensasNovas = (contrato.dispensas || []).map(d => JSON.stringify(d)).filter(d => !est.trava.dispensas.includes(d));
+    const {mexidos} = mexidosNaTrava(raiz, est, contrato);
+    if (mexidos.length) {
+      const lista = mexidos.map(m => `- ${m.r}: ${m.como}`).join('\n');
+      return bloquear(`Você mexeu no que confere a entrega depois que o laço ligou:\n${lista}\n\n` +
+        `Mudar teste, afrouxar ou tirar item do contrato, baixar a nota mínima ou trocar o comando "antes" para passar é enganar a conferência. ` +
+        `Desfaça: ${toc} restaurar (volta os arquivos de teste originais; item do contrato você devolve à mão, como estava) e conserte a entrega.\n` +
+        `O teste está errado de verdade, ou o usuário pediu a mudança? ${toc} pausar, mostre ao usuário o que muda e por quê, e só com o sim dele rode ` +
+        `${toc} liberar <caminho ou contrato:ID> --motivo "palavras do usuário". A liberação aparece para ele no fim do laço e entra no seu relatório.`,
+        true, `trava: ${mexidos.map(m => m.r).join(', ')}`);
+    }
+  }
 
   const fp = impressao(raiz, contrato, contratoArq);
   let r = est.cache?.fp === fp ? lerJSON(path.join(raiz, est.cache.pasta, 'relatorio.json'), null) : null;
@@ -328,7 +409,7 @@ async function hook() {
   }
   est.ativo = false; est.fim = 'concluido'; est.terminou = new Date().toISOString();
   gravarJSON(arq, est);
-  process.stdout.write(JSON.stringify({systemMessage: `toc: contrato fechado em ${est.rodada} rodada(s), conferência e revisor sem pendências.`}));
+  process.stdout.write(JSON.stringify({systemMessage: `toc: contrato fechado em ${est.rodada} rodada(s), conferência e revisor sem pendências.${avisoLiberados(est)}`}));
 }
 const lerJSON0 = s => { try { return JSON.parse(s || '{}'); } catch { return {}; } };
 
@@ -355,11 +436,14 @@ function principal() {
     const ver = path.join(raiz, PASTA, 'veredito.json');
     if (fs.existsSync(ver)) fs.renameSync(ver, path.join(raiz, PASTA, 'veredito-anterior.json'));
     const novo = {ativo: true, sessao: process.env.CLAUDE_CODE_SESSION_ID || '', rodada: 0, max: Number(arg('max', 8)),
-      contrato: contratoRel.split(path.sep).join('/'), iniciado: new Date().toISOString(), conferencias: est?.conferencias || 0, cache: est?.cache};
+      contrato: contratoRel.split(path.sep).join('/'), iniciado: new Date().toISOString(), conferencias: est?.conferencias || 0, cache: est?.cache,
+      trava: travar(raiz, c)};
     gravarJSON(arq, novo);
     const porScript = c.itens.filter(i => i.tipo !== 'revisor').length;
+    const testes = Object.keys(novo.trava.arquivos).filter(r => !r.startsWith('contrato:'));
     return sair(`toc ligado: até ${novo.max} rodadas. Contrato com ${c.itens.length} itens (${porScript} conferidos por script, ${c.itens.length - porScript} pelo revisor).\n` +
-      `Ao tentar terminar, o hook confere a página e só deixa parar quando tudo fechar.`);
+      `Trava: ${testes.length ? `${testes.length} arquivo(s) de teste` : 'nenhum arquivo de teste achado'}, itens do contrato, nota mínima e "antes" ficam como estão agora.\n` +
+      `Ao tentar terminar, o hook confere a entrega e só deixa parar quando tudo fechar.`);
   }
   if (!est) sair('toc: nenhum laço neste projeto (falta .claude/toc/estado.json).', cmd === 'status' ? 0 : 1);
   if (cmd === 'conferir') {
@@ -392,13 +476,46 @@ function principal() {
   }
   if (cmd === 'impressao') { const a = path.resolve(raiz, est.contrato); sair(impressao(raiz, lerContrato(a), a)); }
   if (cmd === 'pausar') { est.ativo = false; est.pausado = true; gravarJSON(arq, est); sair('toc pausado. Retome com: toc.mjs retomar'); }
-  if (cmd === 'retomar') { est.ativo = true; delete est.pausado; delete est.fim; delete est.turno; est.esperas = 0; est.ultimaAtividade = new Date().toISOString(); gravarJSON(arq, est); sair(`toc retomado na rodada ${est.rodada}/${est.max}.`); }
+  if (cmd === 'liberar') {
+    const alvo = resto.find(x => !x.startsWith('--') && x !== arg('motivo'));
+    const motivo = arg('motivo');
+    if (!alvo || !motivo) sair('Uso: toc.mjs liberar <caminho ou contrato:ID> --motivo "o que o usuário disse". Só com o sim do usuário.', 1);
+    const chave = alvo.startsWith('contrato:') ? alvo : rel(raiz, path.resolve(raiz, alvo));
+    if (!est.trava) sair('toc: este laço não tem trava (ligado antes da versão com trava).', 1);
+    est.trava.liberados = {...est.trava.liberados, [chave]: {motivo, em: new Date().toISOString()}};
+    gravarJSON(arq, est);
+    sair(`toc: ${chave} liberado ("${motivo}"). Aparece para o usuário no fim do laço; ponha no relatório final.`);
+  }
+  if (cmd === 'restaurar') {
+    if (!est.trava) sair('toc: este laço não tem trava.', 1);
+    const {mexidos, novos} = mexidosNaTrava(raiz, est, lerContrato(path.resolve(raiz, est.contrato)));
+    const feitos = [], faltam = [];
+    for (const m of mexidos) {
+      if (m.r.startsWith('contrato:')) { faltam.push(`${m.r} (devolva no contrato à mão)`); continue; }
+      const copia = path.join(raiz, PASTA, 'trava', est.trava.arquivos[m.r]);
+      if (!fs.existsSync(copia)) { faltam.push(`${m.r} (grande demais para cópia)`); continue; }
+      fs.mkdirSync(path.dirname(path.resolve(raiz, m.r)), {recursive: true});
+      fs.copyFileSync(copia, path.resolve(raiz, m.r)); feitos.push(m.r);
+    }
+    sair(`toc: ${feitos.length ? 'restaurados ' + feitos.join(', ') : 'nada para restaurar'}.` +
+      (faltam.length ? `\nFalta: ${faltam.join('; ')}.` : '') + (novos.length ? `\nTestes novos (ficam): ${novos.join(', ')}.` : ''));
+  }
+  if (cmd === 'retomar') {
+    // Pausou porque o usuário mandou mensagem nova: o pedido pode ter mudado, então o contrato trava de novo como está.
+    // Os testes não: mudança no teste continua precisando de "liberar". Pausa feita pelo próprio Claude não refaz nada.
+    if (est.fim === 'nova mensagem' && est.trava) {
+      const c = lerContrato(path.resolve(raiz, est.contrato)), agora = fotoTrava(raiz, c);
+      for (const r of Object.keys(est.trava.arquivos)) if (r.startsWith('contrato:')) delete est.trava.arquivos[r];
+      for (const [r, h] of Object.entries(agora)) if (r.startsWith('contrato:')) est.trava.arquivos[r] = h;
+      est.trava.dispensas = (c.dispensas || []).map(d => JSON.stringify(d));
+    }
+    est.ativo = true; delete est.pausado; delete est.fim; delete est.turno; est.esperas = 0; est.ultimaAtividade = new Date().toISOString(); gravarJSON(arq, est); sair(`toc retomado na rodada ${est.rodada}/${est.max}.`); }
   if (cmd === 'parar') { est.ativo = false; est.fim = 'parado'; est.terminou = new Date().toISOString(); gravarJSON(arq, est); sair('toc desligado neste projeto. Relatórios ficam em .claude/toc/.'); }
   if (cmd === 'status') {
     const r = est.cache ? lerJSON(path.join(raiz, est.cache.pasta, 'relatorio.json'), null) : null;
     sair(`toc ${est.ativo ? 'ligado' : 'desligado'}${est.fim ? ' (' + est.fim + ')' : ''}${est.pausado ? ' (pausado)' : ''} · rodada ${est.rodada}/${est.max} · contrato ${est.contrato}` +
       (r ? `\n\n${resumo(r, 20).trimEnd()}` : '\nAinda sem conferência.'));
   }
-  sair(`toc: comando desconhecido "${cmd}". Use iniciar, conferir, esperar, status, pausar, retomar, parar ou hook.`, 1);
+  sair(`toc: comando desconhecido "${cmd}". Use iniciar, conferir, esperar, status, pausar, retomar, parar, liberar, restaurar ou hook.`, 1);
 }
 principal();

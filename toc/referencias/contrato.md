@@ -14,6 +14,7 @@ O contrato diz o que "pronto" quer dizer **para este pedido**. Nada que o usuár
 | `estilo` | não | `idioma` ("pt-BR"), `slop` (false desliga os padrões de texto de IA), `ortografia` (false desliga o corretor do Word), `travessaoMax`, `palavrasOk` (termos certos que o corretor não conhece), `papel` ("carta" se for de propósito) |
 | `observar` | não | o que, mudando, pede nova conferência. Padrão: o próprio arquivo (documento) ou o projeto inteiro (página) |
 | `notaMinima` | não | nota mínima do revisor (80) |
+| `travados` | não | arquivos que conferem a entrega e não podem mudar durante o laço (globs a partir da raiz). Padrão: `**/*.test.*`, `**/*.spec.*`, `**/test/**`, `**/tests/**`, `**/__tests__/**`, `**/test_*.py`, `**/*_test.py`, `**/*_test.go`, `**/conftest.py`. Acrescente configs do teste se quiser (`jest.config.*`, `pytest.ini`). `[]` desliga. Os itens, a `notaMinima` e o `antes` sempre travam |
 | `dispensas` | não | achados aceitos de propósito: `{"regra", "seletor"?, "contem"?, "motivo"}`. `"regra": "texto"` cobre todos os `texto-*` |
 
 ## Só para página web

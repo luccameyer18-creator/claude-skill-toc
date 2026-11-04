@@ -74,8 +74,9 @@ Todos esses foram pegos nos testes do próprio toc.
 3. **Olho de fora.** Um revisor (subagente) que não viu a entrega sendo feita lê as fotos e o texto e grava um veredito. Ele recebe uma ficha tipográfica com as fontes que o navegador ou o Word usaram de verdade, para não chutar fonte pela foto.
    Depois disso a reconferência é barata: o hook recorta um "antes | agora" de cada pendência, mais o que mudou fora delas, e um modelo pequeno (Haiku) só marca resolvido ou não. Revisão inteira de novo só quando precisa.
 4. **A coceira.** Um hook de Stop não deixa o Claude terminar enquanto houver pendência no contrato, nos scripts ou no veredito. Cada rodada é comparada com a anterior: conserto que quebra outra coisa aparece em vermelho.
-5. **O botão de desligar.** 8 rodadas por padrão e, no fim, um relatório honesto do que ficou aberto. Nunca "ficou perfeito".
-6. **Não sequestra a conversa.** O laço é do pedido que o ligou. Mandou mensagem nova, ele pausa sozinho (o Claude só retoma se for a mesma entrega). Seis horas parado, ele desliga.
+5. **Ninguém corrige a própria prova.** Quando o laço liga, o toc trava o que confere: arquivos de teste (`*.test.*`, `*.spec.*`, `tests/`, `test_*.py`…), cada item do contrato, a nota mínima e o comando de build. Se o Claude muda o teste para passar, tira uma exigência ou baixa a régua, o hook bloqueia e manda `toc restaurar` (volta os originais). Mudar exige o seu sim (`toc liberar <arquivo> --motivo "..."`), e toda liberação aparece para você no fim do laço.
+6. **O botão de desligar.** 8 rodadas por padrão e, no fim, um relatório honesto do que ficou aberto. Nunca "ficou perfeito".
+7. **Não sequestra a conversa.** O laço é do pedido que o ligou. Mandou mensagem nova, ele pausa sozinho (o Claude só retoma se for a mesma entrega). Seis horas parado, ele desliga.
 
 **Duas versões, não uma espremida.** Em página web o toc confere desktop e celular como projetos separados: celular sem nenhuma regra `@media` que mude o layout, colunas de texto espremidas abaixo de 150px, texto corrido abaixo de 14px, título com o mesmo tamanho nas duas telas. E o revisor sempre julga se cada tela tem a sua composição.
 

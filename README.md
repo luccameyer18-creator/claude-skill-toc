@@ -74,8 +74,9 @@ Every one of these was caught in toc's own tests.
 3. **Fresh eyes.** A reviewer subagent that never saw the work being done reads the photos and the text and writes a verdict. It gets a typography sheet with the fonts the browser or Word actually used, so it doesn't guess fonts from a screenshot.
    After that, re-checks are cheap: the hook crops a "before | after" of each open issue, plus anything that changed outside those spots, and a small model (Haiku) just ticks them off. Nothing gets re-reviewed from scratch unless it has to be.
 4. **The itch.** A Stop hook won't let Claude finish while anything in the contract, the scripts or the verdict is still open. Each round is diffed against the last one, so a fix that breaks something else shows up in red.
-5. **The off switch.** 8 rounds by default, then an honest report of what's still open. Never "it's perfect".
-6. **It never hijacks your chat.** The loop belongs to the request that started it. Send a new message and it pauses on its own (Claude resumes it only if you're still on the same deliverable). Six idle hours and it switches off.
+5. **No grading your own homework.** When the loop starts, toc locks what does the checking: test files (`*.test.*`, `*.spec.*`, `tests/`, `test_*.py`…), every contract item, the minimum score and the build command. If Claude edits a test to make it pass, deletes a requirement or lowers the bar, the hook blocks and says `toc restaurar` puts the originals back. Changing them takes your yes (`toc liberar <file> --motivo "..."`), and every release shows up to you when the loop ends.
+6. **The off switch.** 8 rounds by default, then an honest report of what's still open. Never "it's perfect".
+7. **It never hijacks your chat.** The loop belongs to the request that started it. Send a new message and it pauses on its own (Claude resumes it only if you're still on the same deliverable). Six idle hours and it switches off.
 
 **Two versions, not one squeezed.** For web pages toc checks desktop and phone as separate designs: a phone layout with no `@media` rule that changes the layout, text columns squeezed under 150px, body text under 14px, a headline the same size on both. And the reviewer always judges whether each screen has its own composition.
 

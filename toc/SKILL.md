@@ -49,6 +49,7 @@ E tem botão de desligar: limite de rodadas e relatório honesto do que ficou ab
 
 - **Escopo.** Corrija o que o contrato e as minúcias apontam. Não redesenhe, não troque nada de `naoMexer`, não "melhore" o que ninguém pediu.
 - **Não engane a conferência.** Proibido: esconder elemento, pôr `aria-hidden` em texto real, apagar ou afrouxar item, editar o veredito, dispensar sem motivo. Dispensa só para decisão do usuário ou falso positivo comprovado, e entra no relatório.
+- **Trava.** `toc iniciar` congela os arquivos de teste (padrão ou `travados` do contrato), os itens do contrato, a `notaMinima` e o `antes`. Mexeu, o hook bloqueia: desfaça com `toc restaurar` e conserte a entrega, não o teste. Teste errado de verdade ou pedido do usuário: `toc pausar`, mostre o que muda, e só com o sim dele `toc liberar <arquivo|contrato:ID> --motivo "palavras dele"`. Nunca libere por conta própria. Liberações e dispensas novas aparecem para o usuário no fim e vão no relatório. Teste novo pode.
 - **Texto:** edição mínima, mantém voz e sentido, não inventa número, exemplo nem fonte. Afirmação sem fonte: pergunte.
 - **Arquivo:** em docx, pptx e xlsx edite no trecho (run, caixa, célula); regravar do zero apaga a formatação.
 - **Correção com valor** ("margin-top 22px → 24px"), não adjetivo.
@@ -65,7 +66,7 @@ E tem botão de desligar: limite de rodadas e relatório honesto do que ficou ab
 
 - Contrato item a item: ok ou falha, com evidência (foto, página, número medido).
 - O que mudou em cada rodada, em uma linha cada.
-- Dispensas e o motivo de cada uma.
+- Dispensas e liberações da trava, com o motivo de cada uma.
 - Até 5 notas não perseguidas e as sugestões fora do pedido.
 - Rodadas usadas, modelo do revisor e o que não foi conferido (aparece como `nao-conferido` no relatório: corretor, páginas, cálculo).
 
